@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ApiMetric {
+  id           String   @id @default(uuid())
+  timestamp    DateTime @default(now())
+  service      String
+  endpoint     String
+  method       String
+  statusCode   Int
+  latencyMs    Int
+  cost         Float    @default(0.0)
+  requestSize  Int      @default(0)
+  responseSize Int      @default(0)
+}
+
+model ServiceCredential {
+  id        String   @id @default(uuid())
+  service   String   @unique
+  apiKey    String
+  apiSecret String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

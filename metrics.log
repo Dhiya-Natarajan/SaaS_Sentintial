@@ -1,0 +1,1 @@
+{"service":"openai","endpoint":"/v1/chat/completions","method":"POST","statusCode":502,"latencyMs":15205,"timestamp":"2026-02-09T16:35:12.745Z"}
