@@ -2,7 +2,7 @@
 
 SaaS-Sentinel is a smart proxy layer designed to monitor API usage, inject credentials securely, and log time-series metrics to prevent overspending. It acts as a middleware between your application and external services (like OpenAI, Stripe, etc.).
 
-## 📂 Project Structure
+## Project Structure
 
 Here is an overview of the key files and directories in the project:
 
@@ -19,13 +19,13 @@ SaaS-Sentinel/
 │   ├── schema.prisma            # Database schema definition for Prisma (SQLite)
 │   └── dev.db                   # SQLite database file (generated after db push)
 ├── .env                         # Environment variables (API keys, DB URL, Port)
-├── IMPLEMENTATION_SUMMARY.md    # Summary of implemented features and architecture
+├── Server_Forward_logic.md    # Summary of implemented features and architecture
 ├── PREREQUISITES.md             # Guide on system requirements and installation
 ├── package.json                 # Project dependencies and scripts
 └── tsconfig.json                # TypeScript configuration
 ```
 
-## 🚀 Key Components
+## Key Components
 
 ### 1. `src/server.ts`
 The main application file. It:
@@ -49,7 +49,7 @@ A service class that abstracts database operations. It:
 ### 4. `prisma/schema.prisma`
 Defines the data model. It currently includes the `ApiMetric` model to store details like timestamp, service name, endpoint, latency, and cost.
 
-## 🛠️ Setup & Usage
+## Setup & Usage
 
 Please refer to [PREREQUISITES.md](./PREREQUISITES.md) for detailed installation instructions.
 
