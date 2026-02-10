@@ -20,7 +20,7 @@ SaaS-Sentinel is a smart proxy layer designed to monitor API usage, inject crede
 
 ### Database and Cache
 - InfluxDB / TimescaleDB - time-series storage for metrics such as requests/min, cost/hour, and latency trends
-- Redis - in-memory store for real-time rate limits, quota counters, and short-term session data
+- Prism / SQLite - in-memory store for real-time rate limits, quota counters, and short-term session data
 
 ### Secrets Manager
 - AWS Secrets Manager / Vault - secure storage and rotation of SaaS API keys used by the gateway and middleware
