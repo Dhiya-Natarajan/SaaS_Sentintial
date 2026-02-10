@@ -2,6 +2,37 @@
 
 SaaS-Sentinel is a smart proxy layer designed to monitor API usage, inject credentials securely, and log time-series metrics to prevent overspending. It acts as a middleware between your application and external services (like OpenAI, Stripe, etc.).
 
+## Architecture
+<img width="854" height="585" alt="image" src="https://github.com/user-attachments/assets/a2e13503-617f-4b93-bc0b-9b9bd31c6f3b" />
+
+
+## Tech Stack
+### Frontend
+- Next.js - dashboard interface for viewing usage, costs, and alerts
+- Shadcn/UI - consistent and accessible UI components for monitoring panels
+
+### Backend
+- Python + FastAPI - high-performance async API gateway that receives client requests, executes middleware policies, and forwards traffic to target SaaS APIs
+
+### ML Models
+- Scikit-learn - statistical models for anomaly detection on request patterns
+- Prophet - time-series forecasting to predict cost/usage spikes
+
+### Database and Cache
+- InfluxDB / TimescaleDB - time-series storage for metrics such as requests/min, cost/hour, and latency trends
+- Redis - in-memory store for real-time rate limits, quota counters, and short-term session data
+
+### Secrets Manager
+- AWS Secrets Manager / Vault - secure storage and rotation of SaaS API keys used by the gateway and middleware
+
+### Alerts
+- Slack / Twilio - real-time alerts when anomalies, quota breaches, or cost spikes are detected
+
+### Deployment
+- Docker - containerized services for portability
+- Kubernates - horizontal scaling of gateway under high traffic
+
+
 ## Project Structure
 
 Here is an overview of the key files and directories in the project:
