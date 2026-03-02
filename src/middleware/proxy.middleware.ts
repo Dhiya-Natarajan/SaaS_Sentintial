@@ -1,6 +1,7 @@
 // import { Request, Response, NextFunction } from 'express';
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { logMetric } from '../services/metrics.service';
+import { anomalyDetector } from '../services/anomaly.service';
 
 const credentials: Record<string, { apiKey: string, target: string }> = {
     'openai': {
@@ -35,14 +36,23 @@ export const setupProxy = (app: any) => {
 
                     (req as any)._startTime = Date.now();
                 },
-                proxyRes: (proxyRes, req, res) => {
+                proxyRes: async (proxyRes, req, res) => {
                     const duration = Date.now() - (req as any)._startTime;
                     const statusCode = proxyRes.statusCode || 0;
+                    const endpoint = req.url || '/';
+                    const method = req.method || 'GET';
+
+                    // Real-time Anomaly Detection
+                    const { isAnomaly, score } = await anomalyDetector.detectAnomaly(duration, statusCode, method, service + endpoint);
+                    if (isAnomaly) {
+                        console.warn(`🚨 [ANOMALY] Detected abnormal behavior on ${service}: Score=${score.toFixed(3)} | Latency=${duration}ms | Payload=${method} ${endpoint}`);
+                        // Optionally trigger webhooks or block request
+                    }
 
                     logMetric({
                         service,
-                        endpoint: req.url || '/',
-                        method: req.method || 'GET',
+                        endpoint,
+                        method,
                         statusCode,
                         latencyMs: duration,
                         timestamp: new Date().toISOString()
