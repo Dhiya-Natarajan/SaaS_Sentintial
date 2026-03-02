@@ -28,6 +28,18 @@ export const setupProxy = (app: any) => {
             },
             on: {
                 proxyReq: (proxyReq, req, res) => {
+                    const currentUsage = recordRequest(service);
+
+                    if (isAnomaly(currentUsage)) {
+                        console.warn(`[${service}] Anomaly detected: ${currentUsage} requests in the current minute.`);
+                        (res as any).status(429).json({
+                            error: "Anomaly detected",
+                            message: "Request blocked due to abnormal usage", currentUsage
+                        });
+                        proxyReq.destroy();
+                        return;
+                    }
+
                     if (service === 'openai' || service === 'anthropic') {
                         proxyReq.setHeader('Authorization', `Bearer ${config.apiKey}`);
                     } else if (service === 'stripe') {
