@@ -28,3 +28,39 @@ model ServiceCredential {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model FallbackConfig {
+  id             String   @id @default(uuid())
+  primaryService String   @unique
+  fallbackService String
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model ModelDowngradeMapping {
+  id          String   @id @default(uuid())
+  service     String
+  sourceModel String
+  targetModel String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([service, sourceModel])
+}
+
+model EnforcementLog {
+  id                String          @id @default(uuid())
+  timestamp         DateTime        @default(now())
+  service           String
+  routedService     String
+  endpoint          String
+  method            String
+  severity          String
+  action            String
+  throttleMs        Int             @default(0)
+  currentUsage      Int?
+  anomalyThreshold  Float?
+  anomalyMultiplier Float?
+  details           String?
+}
