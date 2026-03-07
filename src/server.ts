@@ -3,11 +3,14 @@ import dotenv from 'dotenv';
 import { setupProxy } from './middleware/proxy.middleware';
 import { getStats } from './services/metrics.service';
 import { anomalyDetector } from './services/anomaly.service';
+import { controlEngine } from './services/control-engine.service';
+import { AnomalySeverity } from './ml/detect-anomaly';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const VALID_SEVERITIES: AnomalySeverity[] = ['NONE', 'LOW', 'MEDIUM', 'HIGH'];
 
 app.use(express.json());
 
@@ -24,6 +27,38 @@ app.get('/metrics', async (req, res) => {
     try {
         const stats = await getStats();
         res.json(stats);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// View enforcement logs from the control engine
+app.get('/enforcements', async (req, res) => {
+    try {
+        const limit = Number(req.query.limit || 50);
+        const service = typeof req.query.service === 'string' ? req.query.service : undefined;
+        const rawSeverity = typeof req.query.severity === 'string'
+            ? req.query.severity.toUpperCase()
+            : undefined;
+
+        if (rawSeverity && !VALID_SEVERITIES.includes(rawSeverity as AnomalySeverity)) {
+            return res.status(400).json({
+                error: `Invalid severity. Allowed values: ${VALID_SEVERITIES.join(', ')}`
+            });
+        }
+
+        const severity = rawSeverity as AnomalySeverity | undefined;
+
+        const logs = await controlEngine.getEnforcementLogs({
+            limit: Number.isFinite(limit) ? limit : 50,
+            service,
+            severity
+        });
+
+        res.json({
+            count: logs.length,
+            logs
+        });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

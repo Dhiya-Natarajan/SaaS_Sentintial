@@ -1,7 +1,16 @@
-// import { Request, Response, NextFunction } from 'express';
-import { createProxyMiddleware, Options } from 'http-proxy-middleware';
+import { NextFunction, Request, Response } from 'express';
+import {
+    createProxyMiddleware,
+    fixRequestBody,
+    Options
+} from 'http-proxy-middleware';
 import { logMetric } from '../services/metrics.service';
 import { anomalyDetector } from '../services/anomaly.service';
+import {
+    ControlDecision,
+    controlEngine
+} from '../services/control-engine.service';
+import { recordRequest } from '../services/usage-tracker';
 
 const credentials: Record<string, { apiKey: string, target: string }> = {
     'openai': {
@@ -18,51 +27,97 @@ const credentials: Record<string, { apiKey: string, target: string }> = {
     }
 };
 
+type ControlledRequest = Request & {
+    _startTime?: number;
+    _controlDecision?: ControlDecision;
+};
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const buildControlMiddleware = (service: string) =>
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const currentUsage = recordRequest(service);
+            const decision = await controlEngine.evaluate({
+                service,
+                endpoint: req.url || '/',
+                method: req.method || 'GET',
+                currentUsage,
+                requestBody: req.body,
+                availableServices: Object.keys(credentials)
+            });
+
+            const controlledReq = req as ControlledRequest;
+            controlledReq._startTime = Date.now();
+            controlledReq._controlDecision = decision;
+
+            if (decision.modifiedBody !== undefined) {
+                controlledReq.body = decision.modifiedBody;
+            }
+
+            if (decision.actions.length > 0) {
+                console.warn(
+                    `[${service}] control=${decision.actions.join(',')} severity=${decision.severity} usage=${currentUsage}`
+                );
+            }
+
+            if (decision.throttleMs > 0) {
+                await sleep(decision.throttleMs);
+            }
+        } catch (error: any) {
+            console.error(`[${service}] Control engine failed:`, error?.message || error);
+        }
+
+        next();
+    };
+
 export const setupProxy = (app: any) => {
     Object.entries(credentials).forEach(([service, config]) => {
         const proxyOptions: Options = {
             target: config.target,
             changeOrigin: true,
+            router: (req) => {
+                const controlledReq = req as ControlledRequest;
+                const routedService = controlledReq._controlDecision?.routedService || service;
+                return credentials[routedService]?.target || config.target;
+            },
             pathRewrite: {
                 [`^/proxy/${service}`]: '',
             },
             on: {
                 proxyReq: (proxyReq, req, res) => {
-                    const currentUsage = recordRequest(service);
+                    const controlledReq = req as ControlledRequest;
+                    const routedService = controlledReq._controlDecision?.routedService || service;
+                    const routedConfig = credentials[routedService] || config;
 
-                    if (isAnomaly(currentUsage)) {
-                        console.warn(`[${service}] Anomaly detected: ${currentUsage} requests in the current minute.`);
-                        (res as any).status(429).json({
-                            error: "Anomaly detected",
-                            message: "Request blocked due to abnormal usage", currentUsage
-                        });
-                        proxyReq.destroy();
-                        return;
-                    }
-
-                    if (service === 'openai' || service === 'anthropic') {
-                        proxyReq.setHeader('Authorization', `Bearer ${config.apiKey}`);
-                    } else if (service === 'stripe') {
-                        proxyReq.setHeader('Authorization', `Bearer ${config.apiKey}`);
-                    }
-
-                    (req as any)._startTime = Date.now();
+                    proxyReq.setHeader('Authorization', `Bearer ${routedConfig.apiKey}`);
+                    fixRequestBody(proxyReq, req);
                 },
                 proxyRes: async (proxyRes, req, res) => {
-                    const duration = Date.now() - (req as any)._startTime;
+                    const controlledReq = req as ControlledRequest;
+                    const duration = Date.now() - (controlledReq._startTime || Date.now());
                     const statusCode = proxyRes.statusCode || 0;
                     const endpoint = req.url || '/';
                     const method = req.method || 'GET';
+                    const routedService = controlledReq._controlDecision?.routedService || service;
 
                     // Real-time Anomaly Detection
-                    const { isAnomaly, score } = await anomalyDetector.detectAnomaly(duration, statusCode, method, service + endpoint);
+                    const { isAnomaly, score } = await anomalyDetector.detectAnomaly(
+                        duration,
+                        statusCode,
+                        method,
+                        routedService + endpoint
+                    );
+
                     if (isAnomaly) {
-                        console.warn(`🚨 [ANOMALY] Detected abnormal behavior on ${service}: Score=${score.toFixed(3)} | Latency=${duration}ms | Payload=${method} ${endpoint}`);
+                        console.warn(
+                            `🚨 [ANOMALY] Detected abnormal behavior on ${routedService}: Score=${score.toFixed(3)} | Latency=${duration}ms | Payload=${method} ${endpoint}`
+                        );
                         // Optionally trigger webhooks or block request
                     }
 
                     logMetric({
-                        service,
+                        service: routedService,
                         endpoint,
                         method,
                         statusCode,
@@ -71,11 +126,14 @@ export const setupProxy = (app: any) => {
                     });
                 },
                 error: (err, req, res) => {
-                    const duration = Date.now() - (req as any)._startTime;
+                    const controlledReq = req as ControlledRequest;
+                    const duration = Date.now() - (controlledReq._startTime || Date.now());
+                    const routedService = controlledReq._controlDecision?.routedService || service;
+
                     console.error(`[${service}] Proxy Error:`, err.message);
 
                     logMetric({
-                        service,
+                        service: routedService,
                         endpoint: req.url || '/',
                         method: req.method || 'GET',
                         statusCode: 502,
@@ -86,6 +144,10 @@ export const setupProxy = (app: any) => {
             }
         };
 
-        app.use(`/proxy/${service}`, createProxyMiddleware(proxyOptions));
+        app.use(
+            `/proxy/${service}`,
+            buildControlMiddleware(service),
+            createProxyMiddleware(proxyOptions)
+        );
     });
 };
