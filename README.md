@@ -86,10 +86,20 @@ Please refer to [PREREQUISITES.md](./PREREQUISITES.md) for detailed installation
 
 To start the server:
 ```bash
-npm run dev
+bun run dev
 ```
 
 To run the test script:
 ```bash
-npx ts-node src/test-proxy.ts
+bun run test
+```
+
+To generate Prisma client:
+```bash
+bun run db:generate
+```
+
+To push Prisma schema:
+```bash
+DATABASE_URL="file:./dev.db" bun run db:push
 ```
