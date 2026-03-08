@@ -1,7 +1,13 @@
 import fs from 'fs';
 import { USAGE_MODEL_PATH } from './model-paths';
 
-let model: any = null;
+interface UsageModel {
+  threshold?: number;
+  [key: string]: unknown;
+}
+
+let model: UsageModel | null = null;
+let modelMtimeMs: number | null = null;
 
 export type AnomalySeverity = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -12,23 +18,44 @@ export interface UsageAnomalyResult {
   multiplier: number;
 }
 
-export function loadModel() {
-  if (!model) {
-    if (!fs.existsSync(USAGE_MODEL_PATH)) {
-      model = { threshold: Infinity };
+export function loadModel(): UsageModel {
+  const currentMtimeMs = getUsageModelMtime();
+
+  if (!currentMtimeMs) {
+    model = { threshold: Infinity };
+    modelMtimeMs = null;
+    return model;
+  }
+
+  if (model && modelMtimeMs === currentMtimeMs) {
+    return model;
+  }
+
+  try {
+    const data = fs.readFileSync(USAGE_MODEL_PATH, 'utf-8');
+    model = JSON.parse(data);
+    modelMtimeMs = currentMtimeMs;
+    console.log('ML Model Loaded:', model);
+  } catch (error) {
+    if (model) {
+      console.warn('Failed to reload updated usage model. Continuing with cached model.', error);
       return model;
     }
 
-    const data = fs.readFileSync(USAGE_MODEL_PATH, 'utf-8');
-
-    model = JSON.parse(data);
-    console.log("ML Model Loaded:", model);
+    model = { threshold: Infinity };
+    modelMtimeMs = currentMtimeMs;
   }
+
+  if (!model) {
+    model = { threshold: Infinity };
+  }
+
   return model;
 }
 
 export function resetUsageModelCache() {
   model = null;
+  modelMtimeMs = null;
 }
 
 export function reloadUsageModel() {
@@ -68,4 +95,12 @@ function calculateSeverity(multiplier: number): AnomalySeverity {
   }
 
   return 'HIGH';
+}
+
+function getUsageModelMtime() {
+  if (!fs.existsSync(USAGE_MODEL_PATH)) {
+    return null;
+  }
+
+  return fs.statSync(USAGE_MODEL_PATH).mtimeMs;
 }

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+type MetricsPrismaLike = Pick<PrismaClient, 'apiMetric'>;
 
 export interface ApiMetric {
     service: string;
@@ -37,11 +38,13 @@ const calculateCost = (metric: ApiMetric) => {
     return 0.0;
 };
 
-export const getStats = async () => {
-    const totalCalls = await prisma.apiMetric.count();
-    const serviceGroups = await prisma.apiMetric.groupBy({
+export const getStats = async (db: MetricsPrismaLike = prisma) => {
+    const totalCalls = await db.apiMetric.count();
+    const serviceGroups = await db.apiMetric.groupBy({
         by: ['service'],
-        _count: true,
+        _count: {
+            _all: true
+        },
         _sum: {
             latencyMs: true,
             cost: true
@@ -52,9 +55,9 @@ export const getStats = async () => {
         totalCalls,
         breakdown: serviceGroups.map(g => ({
             service: g.service,
-            calls: g._count,
-            totalLatency: g._sum.latencyMs,
-            totalCost: g._sum.cost
+            calls: g._count._all,
+            totalLatency: g._sum.latencyMs ?? 0,
+            totalCost: g._sum.cost ?? 0
         }))
     };
 };

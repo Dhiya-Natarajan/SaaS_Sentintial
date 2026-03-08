@@ -6,6 +6,7 @@ import { anomalyDetector } from './services/anomaly.service';
 import { controlEngine } from './services/control-engine.service';
 import { AnomalySeverity, reloadUsageModel } from './ml/detect-anomaly';
 import { trainUsageBaseline } from './ml/train-model';
+import { buildRetrainStatus } from './ml/retrain-status';
 import { ensureUsageModelReady } from './ml/usage-model-bootstrap';
 
 dotenv.config();
@@ -80,8 +81,14 @@ app.post('/ml/retrain', async (req, res) => {
             reloadUsageModel();
         }
 
+        const retrainStatus = buildRetrainStatus(
+            Boolean(usageModel),
+            anomalyModelTrained
+        );
+
         res.json({
-            message: 'ML model retraining completed.',
+            status: retrainStatus.status,
+            message: retrainStatus.message,
             usageModelTrained: Boolean(usageModel),
             responseAnomalyModelTrained: anomalyModelTrained
         });
