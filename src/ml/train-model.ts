@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
+import path from 'path';
 
 import { groupByMinute } from './usage-analyzer';
 import { trainUsageModel } from './forecasting';
+import { USAGE_MODEL_PATH } from './model-paths';
 
 const prisma = new PrismaClient();
 
@@ -32,8 +34,10 @@ async function train() {
 
   console.log("Saving model...");
 
+  fs.mkdirSync(path.dirname(USAGE_MODEL_PATH), { recursive: true });
+
   fs.writeFileSync(
-    'models/usage-model.json',
+    USAGE_MODEL_PATH,
     JSON.stringify(model, null, 2)
   );
 

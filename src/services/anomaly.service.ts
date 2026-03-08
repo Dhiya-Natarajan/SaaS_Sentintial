@@ -3,6 +3,7 @@ import { IsolationForest } from 'ml-isolation-forest';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
+import { ISOLATION_FOREST_MODEL_PATH } from '../ml/model-paths';
 
 const prisma = new PrismaClient();
 
@@ -52,7 +53,7 @@ export class AnomalyDetectionService {
     private scaler: SimpleScaler = new SimpleScaler();
     private threshold: number = 0.6; // Default fallback
     private contamination: number = 0.05; // 5% expected anomalies
-    private modelPath = path.join(process.cwd(), 'ml_models', 'isolation_forest_v1.json');
+    private modelPath = ISOLATION_FOREST_MODEL_PATH;
 
     constructor() {
         this.initialize();

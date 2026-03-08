@@ -1,7 +1,6 @@
 import fs from 'fs';
-import path from 'path';
+import { USAGE_MODEL_PATH } from './model-paths';
 
-const MODEL_PATH = path.join(process.cwd(), 'models', 'usage-model.json');
 let model: any = null;
 
 export type AnomalySeverity = 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
@@ -15,12 +14,12 @@ export interface UsageAnomalyResult {
 
 export function loadModel() {
   if (!model) {
-    if (!fs.existsSync(MODEL_PATH)) {
+    if (!fs.existsSync(USAGE_MODEL_PATH)) {
       model = { threshold: Infinity };
       return model;
     }
 
-    const data = fs.readFileSync(MODEL_PATH, 'utf-8');
+    const data = fs.readFileSync(USAGE_MODEL_PATH, 'utf-8');
 
     model = JSON.parse(data);
     console.log("ML Model Loaded:", model);
