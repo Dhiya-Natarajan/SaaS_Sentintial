@@ -1,63 +1,162 @@
+import type { ClientRequest } from 'http';
 import { NextFunction, Request, Response } from 'express';
 import {
     createProxyMiddleware,
     fixRequestBody,
-    Options
+    responseInterceptor,
+    type Options
 } from 'http-proxy-middleware';
-import { logMetric } from '../services/metrics.service';
+import { logMetric, type ApiMetric } from '../services/metrics.service';
 import { anomalyDetector } from '../services/anomaly.service';
 import {
-    ControlDecision,
-    controlEngine
+    controlEngine,
+    type ControlDecision,
+    type ControlDecisionInput
 } from '../services/control-engine.service';
 import { recordRequest } from '../services/usage-tracker';
-
-const credentials: Record<string, { apiKey: string, target: string }> = {
-    'openai': {
-        apiKey: process.env.OPENAI_API_KEY || 'sk-placeholder',
-        target: 'https://api.openai.com'
-    },
-    'anthropic': {
-        apiKey: process.env.ANTHROPIC_API_KEY || 'sk-ant-placeholder',
-        target: 'https://api.anthropic.com'
-    },
-    'stripe': {
-        apiKey: process.env.STRIPE_API_KEY || 'sk_test_placeholder',
-        target: 'https://api.stripe.com'
-    }
-};
+import {
+    PROVIDER_SERVICES,
+    classifyRequest,
+    prepareUpstreamRequest,
+    type PreparedUpstreamRequest,
+    type ProviderService
+} from '../providers/provider-routing';
 
 type ControlledRequest = Request & {
     _startTime?: number;
     _controlDecision?: ControlDecision;
+    _upstreamRequest?: PreparedUpstreamRequest;
 };
+
+interface ProxyDependencies {
+    controlEngine?: {
+        evaluate(input: ControlDecisionInput): Promise<ControlDecision>;
+    };
+    anomalyDetector?: {
+        detectAnomaly(
+            latencyMs: number,
+            statusCode: number,
+            method: string,
+            endpoint: string
+        ): Promise<{ isAnomaly: boolean; score: number }>;
+    };
+    logMetric?: (metric: ApiMetric) => Promise<unknown> | unknown;
+}
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const buildControlMiddleware = (service: string) =>
+const CONTROL_ENGINE_ERROR_RESPONSE = {
+    error: 'SaaS-Sentinel could not evaluate this request.'
+};
+
+const DEFAULT_POLICY_ERROR = 'Request blocked by SaaS-Sentinel policy.';
+
+function buildFallbackDecision(service: ProviderService, req: Request): ControlDecision {
+    return {
+        service,
+        routedService: service,
+        endpoint: req.url || '/',
+        method: req.method || 'GET',
+        isAnomaly: false,
+        reason: 'NONE',
+        severity: 'NONE',
+        throttleMs: 0,
+        actions: [],
+        currentUsage: 0,
+        anomalyThreshold: Infinity,
+        anomalyMultiplier: 0,
+        modifiedBody: req.body
+    };
+}
+
+function getStructuredBlockResponse(decision: ControlDecision) {
+    return {
+        error: DEFAULT_POLICY_ERROR,
+        reason: decision.reason,
+        actions: decision.actions
+    };
+}
+
+function applyUpstreamHeaders(proxyReq: ClientRequest, headers: Record<string, string>) {
+    const removableHeaders = [
+        'authorization',
+        'x-api-key',
+        'anthropic-version',
+        'content-length'
+    ];
+
+    for (const header of removableHeaders) {
+        proxyReq.removeHeader(header);
+    }
+
+    for (const [key, value] of Object.entries(headers)) {
+        proxyReq.setHeader(key, value);
+    }
+}
+
+function setResponseHeaders(
+    res: { setHeader(name: string, value: string): unknown },
+    headers?: Record<string, string>
+) {
+    if (!headers) {
+        return;
+    }
+
+    for (const [key, value] of Object.entries(headers)) {
+        res.setHeader(key, value);
+    }
+}
+
+const buildControlMiddleware = (
+    service: ProviderService,
+    dependencies: Required<ProxyDependencies>
+) =>
     async (req: Request, res: Response, next: NextFunction) => {
+        const controlledReq = req as ControlledRequest;
+        controlledReq._startTime = Date.now();
+
         try {
             const currentUsage = recordRequest(service);
-            const decision = await controlEngine.evaluate({
+            const classification = classifyRequest(
+                service,
+                req.method || 'GET',
+                req.url || '/',
+                req.body
+            );
+
+            const decision = await dependencies.controlEngine.evaluate({
                 service,
                 endpoint: req.url || '/',
                 method: req.method || 'GET',
                 currentUsage,
                 requestBody: req.body,
-                availableServices: Object.keys(credentials)
+                requestKind: classification.requestKind,
+                rerouteEligible: classification.rerouteEligible,
+                availableServices: PROVIDER_SERVICES
             });
 
-            const controlledReq = req as ControlledRequest;
-            controlledReq._startTime = Date.now();
             controlledReq._controlDecision = decision;
 
-            if (decision.modifiedBody !== undefined) {
-                controlledReq.body = decision.modifiedBody;
+            if (decision.actions.includes('BLOCK')) {
+                return res.status(403).json(getStructuredBlockResponse(decision));
+            }
+
+            controlledReq._upstreamRequest = prepareUpstreamRequest({
+                originalService: service,
+                routedService: decision.routedService,
+                method: req.method || 'GET',
+                path: req.url || '/',
+                body: decision.modifiedBody,
+                headers: req.headers
+            });
+
+            if (controlledReq._upstreamRequest.body !== undefined) {
+                controlledReq.body = controlledReq._upstreamRequest.body;
             }
 
             if (decision.actions.length > 0) {
                 console.warn(
-                    `[${service}] control=${decision.actions.join(',')} severity=${decision.severity} usage=${currentUsage}`
+                    `[${service}] control=${decision.actions.join(',')} reason=${decision.reason} severity=${decision.severity} usage=${currentUsage}`
                 );
             }
 
@@ -66,43 +165,88 @@ const buildControlMiddleware = (service: string) =>
             }
         } catch (error: any) {
             console.error(`[${service}] Control engine failed:`, error?.message || error);
+
+            try {
+                const fallbackDecision = buildFallbackDecision(service, req);
+                controlledReq._controlDecision = fallbackDecision;
+                controlledReq._upstreamRequest = prepareUpstreamRequest({
+                    originalService: service,
+                    routedService: service,
+                    method: req.method || 'GET',
+                    path: req.url || '/',
+                    body: req.body,
+                    headers: req.headers
+                });
+            } catch (fallbackError: any) {
+                console.error(`[${service}] Proxy preparation failed:`, fallbackError?.message || fallbackError);
+                return res.status(502).json(CONTROL_ENGINE_ERROR_RESPONSE);
+            }
         }
 
         next();
     };
 
-export const setupProxy = (app: any) => {
-    Object.entries(credentials).forEach(([service, config]) => {
+export const createControlMiddleware = buildControlMiddleware;
+
+export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
+    const resolvedDependencies: Required<ProxyDependencies> = {
+        controlEngine: dependencies.controlEngine || controlEngine,
+        anomalyDetector: dependencies.anomalyDetector || anomalyDetector,
+        logMetric: dependencies.logMetric || logMetric
+    };
+
+    PROVIDER_SERVICES.forEach((service) => {
         const proxyOptions: Options = {
-            target: config.target,
+            target: 'http://localhost',
             changeOrigin: true,
+            selfHandleResponse: true,
             router: (req) => {
                 const controlledReq = req as ControlledRequest;
-                const routedService = controlledReq._controlDecision?.routedService || service;
-                return credentials[routedService]?.target || config.target;
+                return controlledReq._upstreamRequest?.target;
             },
-            pathRewrite: {
-                [`^/proxy/${service}`]: '',
+            pathRewrite: (_, req) => {
+                const controlledReq = req as ControlledRequest;
+                return controlledReq._upstreamRequest?.path || req.url || '/';
             },
             on: {
-                proxyReq: (proxyReq, req, res) => {
+                proxyReq: (proxyReq, req) => {
                     const controlledReq = req as ControlledRequest;
-                    const routedService = controlledReq._controlDecision?.routedService || service;
-                    const routedConfig = credentials[routedService] || config;
+                    const upstreamRequest = controlledReq._upstreamRequest;
 
-                    proxyReq.setHeader('Authorization', `Bearer ${routedConfig.apiKey}`);
+                    if (!upstreamRequest) {
+                        return;
+                    }
+
+                    applyUpstreamHeaders(proxyReq, upstreamRequest.headers);
                     fixRequestBody(proxyReq, req);
                 },
-                proxyRes: async (proxyRes, req, res) => {
+                proxyRes: responseInterceptor(async (responseBuffer, proxyRes, req, res) => {
                     const controlledReq = req as ControlledRequest;
-                    const duration = Date.now() - (controlledReq._startTime || Date.now());
-                    const statusCode = proxyRes.statusCode || 0;
+                    const upstreamRequest = controlledReq._upstreamRequest;
                     const endpoint = req.url || '/';
                     const method = req.method || 'GET';
                     const routedService = controlledReq._controlDecision?.routedService || service;
+                    const duration = Date.now() - (controlledReq._startTime || Date.now());
+                    let statusCode = proxyRes.statusCode || 200;
+                    let responseBody: Buffer | string = responseBuffer;
 
-                    // Real-time Anomaly Detection
-                    const { isAnomaly, score } = await anomalyDetector.detectAnomaly(
+                    if (upstreamRequest?.responseTransformer) {
+                        const transformed = upstreamRequest.responseTransformer({
+                            body: responseBuffer,
+                            headers: proxyRes.headers,
+                            statusCode
+                        });
+
+                        if (typeof transformed.statusCode === 'number') {
+                            statusCode = transformed.statusCode;
+                            res.statusCode = transformed.statusCode;
+                        }
+
+                        setResponseHeaders(res, transformed.headers);
+                        responseBody = transformed.body;
+                    }
+
+                    const { isAnomaly, score } = await resolvedDependencies.anomalyDetector.detectAnomaly(
                         duration,
                         statusCode,
                         method,
@@ -113,10 +257,9 @@ export const setupProxy = (app: any) => {
                         console.warn(
                             `🚨 [ANOMALY] Detected abnormal behavior on ${routedService}: Score=${score.toFixed(3)} | Latency=${duration}ms | Payload=${method} ${endpoint}`
                         );
-                        // Optionally trigger webhooks or block request
                     }
 
-                    logMetric({
+                    await resolvedDependencies.logMetric({
                         service: routedService,
                         endpoint,
                         method,
@@ -124,15 +267,18 @@ export const setupProxy = (app: any) => {
                         latencyMs: duration,
                         timestamp: new Date().toISOString()
                     });
-                },
-                error: (err, req, res) => {
+
+                    return responseBody;
+                }),
+                error: async (err, req, res) => {
                     const controlledReq = req as ControlledRequest;
                     const duration = Date.now() - (controlledReq._startTime || Date.now());
                     const routedService = controlledReq._controlDecision?.routedService || service;
+                    const serverResponse = res as Response;
 
                     console.error(`[${service}] Proxy Error:`, err.message);
 
-                    logMetric({
+                    await resolvedDependencies.logMetric({
                         service: routedService,
                         endpoint: req.url || '/',
                         method: req.method || 'GET',
@@ -140,13 +286,23 @@ export const setupProxy = (app: any) => {
                         latencyMs: duration,
                         timestamp: new Date().toISOString()
                     });
+
+                    if (!serverResponse.headersSent) {
+                        serverResponse.writeHead(502, { 'content-type': 'application/json' });
+                    }
+
+                    serverResponse.end(
+                        JSON.stringify({
+                            error: 'Upstream request failed.'
+                        })
+                    );
                 }
             }
         };
 
         app.use(
             `/proxy/${service}`,
-            buildControlMiddleware(service),
+            createControlMiddleware(service, resolvedDependencies),
             createProxyMiddleware(proxyOptions)
         );
     });
