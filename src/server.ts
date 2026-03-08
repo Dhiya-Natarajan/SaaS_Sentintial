@@ -4,7 +4,8 @@ import { setupProxy } from './middleware/proxy.middleware';
 import { getStats } from './services/metrics.service';
 import { anomalyDetector } from './services/anomaly.service';
 import { controlEngine } from './services/control-engine.service';
-import { AnomalySeverity } from './ml/detect-anomaly';
+import { AnomalySeverity, reloadUsageModel } from './ml/detect-anomaly';
+import { trainUsageBaseline } from './ml/train-model';
 
 dotenv.config();
 
@@ -67,8 +68,20 @@ app.get('/enforcements', async (req, res) => {
 // Admin endpoint to retrain the ML model
 app.post('/ml/retrain', async (req, res) => {
     try {
-        await anomalyDetector.trainBaseline();
-        res.json({ message: 'ML model training triggered successfully.' });
+        const [usageModel, anomalyModelTrained] = await Promise.all([
+            trainUsageBaseline(),
+            anomalyDetector.trainBaseline()
+        ]);
+
+        if (usageModel) {
+            reloadUsageModel();
+        }
+
+        res.json({
+            message: 'ML model retraining completed.',
+            usageModelTrained: Boolean(usageModel),
+            responseAnomalyModelTrained: anomalyModelTrained
+        });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

@@ -126,7 +126,7 @@ export class AnomalyDetectionService {
 
         if (metricsRecs.length < 50) {
             console.warn('⚠️ Not enough data to train Isolation Forest. Need at least 50 records.');
-            return;
+            return false;
         }
 
         // Feature Extraction
@@ -168,11 +168,15 @@ export class AnomalyDetectionService {
         }));
 
         console.log(`✅ Training complete. Threshold set at ${this.threshold.toFixed(4)} (${scaledData.length} records).`);
+        return true;
     }
 
     private scheduleRetraining() {
         // Daily retraining
-        setInterval(() => this.trainBaseline(), 24 * 60 * 60 * 1000);
+        const timer = setInterval(() => this.trainBaseline(), 24 * 60 * 60 * 1000);
+        if (typeof timer.unref === 'function') {
+            timer.unref();
+        }
     }
 
     public async detectAnomaly(latencyMs: number, statusCode: number, method: string, endpoint: string): Promise<{ isAnomaly: boolean; score: number }> {

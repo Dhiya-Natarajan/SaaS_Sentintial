@@ -27,6 +27,15 @@ export function loadModel() {
   return model;
 }
 
+export function resetUsageModelCache() {
+  model = null;
+}
+
+export function reloadUsageModel() {
+  resetUsageModelCache();
+  return loadModel();
+}
+
 export function isAnomaly(currentRequests: number) {
   return detectUsageAnomaly(currentRequests).isAnomaly;
 }

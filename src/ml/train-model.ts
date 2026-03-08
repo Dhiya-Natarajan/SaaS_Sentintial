@@ -8,7 +8,7 @@ import { USAGE_MODEL_PATH } from './model-paths';
 
 const prisma = new PrismaClient();
 
-async function train() {
+export async function trainUsageBaseline() {
 
   console.log("Fetching metrics...");
 
@@ -19,7 +19,7 @@ async function train() {
 
   if(metrics.length === 0) {
     console.log("No data found.");
-    return;
+    return null;
   }
 
   console.log("Analyzing usage...");
@@ -43,6 +43,13 @@ async function train() {
 
   console.log("Model trained successfully:");
   console.log(model);
+
+  return model;
 }
 
-train();
+if (require.main === module) {
+  trainUsageBaseline().catch((error) => {
+    console.error('Usage model training failed:', error);
+    process.exitCode = 1;
+  });
+}
