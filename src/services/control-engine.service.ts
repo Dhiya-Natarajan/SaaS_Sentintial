@@ -3,6 +3,7 @@ import {
   AnomalySeverity,
   detectUsageAnomaly
 } from '../ml/detect-anomaly';
+import type { ProviderService } from '../providers/provider-routing';
 
 const prisma = new PrismaClient();
 
@@ -13,7 +14,10 @@ const THROTTLE_MS_BY_SEVERITY: Record<AnomalySeverity, number> = {
   HIGH: 1000
 };
 
-const DEFAULT_FALLBACK_CONFIGS = [
+const DEFAULT_FALLBACK_CONFIGS: Array<{
+  primaryService: ProviderService;
+  fallbackService: ProviderService;
+}> = [
   { primaryService: 'openai', fallbackService: 'anthropic' }
 ];
 
@@ -23,24 +27,36 @@ const DEFAULT_MODEL_DOWNGRADES = [
   { service: 'anthropic', sourceModel: 'claude-3-opus-20240229', targetModel: 'claude-3-haiku-20240307' }
 ];
 
+export type ControlReason = 'NONE' | 'OVERLOAD' | 'SECURITY_POLICY';
+export type ControlAction = 'THROTTLE' | 'REROUTE' | 'DOWNGRADE' | 'BLOCK';
+
+export interface PolicySignal {
+  block: boolean;
+  details?: string;
+}
+
 export interface ControlDecisionInput {
-  service: string;
+  service: ProviderService;
   endpoint: string;
   method: string;
   currentUsage: number;
   requestBody?: unknown;
-  availableServices: string[];
+  availableServices: ProviderService[];
+  requestKind?: string;
+  rerouteEligible?: boolean;
+  policySignal?: PolicySignal;
 }
 
 export interface ControlDecision {
-  service: string;
-  routedService: string;
+  service: ProviderService;
+  routedService: ProviderService;
   endpoint: string;
   method: string;
   isAnomaly: boolean;
+  reason: ControlReason;
   severity: AnomalySeverity;
   throttleMs: number;
-  actions: string[];
+  actions: ControlAction[];
   currentUsage: number;
   anomalyThreshold: number;
   anomalyMultiplier: number;
@@ -51,22 +67,53 @@ export interface ControlDecision {
   modifiedBody?: unknown;
 }
 
-class ControlEngineService {
+type PrismaLike = Pick<
+  PrismaClient,
+  'fallbackConfig' | 'modelDowngradeMapping' | 'enforcementLog'
+>;
+
+interface ControlEngineDependencies {
+  prisma?: PrismaLike;
+  detectUsage?: typeof detectUsageAnomaly;
+}
+
+export class ControlEngineService {
   private defaultsInitialized = false;
+  private prisma: PrismaLike;
+  private detectUsage: typeof detectUsageAnomaly;
+
+  constructor(dependencies: ControlEngineDependencies = {}) {
+    this.prisma = dependencies.prisma || prisma;
+    this.detectUsage = dependencies.detectUsage || detectUsageAnomaly;
+  }
 
   async evaluate(input: ControlDecisionInput): Promise<ControlDecision> {
     await this.ensureDefaults();
 
-    const usageAnomaly = detectUsageAnomaly(input.currentUsage);
-    const throttleMs = THROTTLE_MS_BY_SEVERITY[usageAnomaly.severity];
-    const actions: string[] = [];
+    const usageAnomaly = this.detectUsage(input.currentUsage);
+    const isSecurityBlock = input.policySignal?.block === true;
+    const reason: ControlReason = isSecurityBlock
+      ? 'SECURITY_POLICY'
+      : usageAnomaly.isAnomaly
+        ? 'OVERLOAD'
+        : 'NONE';
+    const throttleMs = reason === 'OVERLOAD'
+      ? THROTTLE_MS_BY_SEVERITY[usageAnomaly.severity]
+      : 0;
+    const actions: ControlAction[] = [];
 
-    if (throttleMs > 0) {
+    if (isSecurityBlock) {
+      actions.push('BLOCK');
+    } else if (throttleMs > 0) {
       actions.push('THROTTLE');
     }
 
     let routedService = input.service;
-    if (usageAnomaly.severity === 'HIGH') {
+    if (
+      reason === 'OVERLOAD' &&
+      usageAnomaly.severity === 'HIGH' &&
+      input.rerouteEligible
+    ) {
       const fallback = await this.getFallbackService(input.service);
       if (
         fallback &&
@@ -81,7 +128,10 @@ class ControlEngineService {
     let modifiedBody = input.requestBody;
     let modelDowngrade: ControlDecision['modelDowngrade'];
 
-    if (usageAnomaly.severity === 'MEDIUM' || usageAnomaly.severity === 'HIGH') {
+    if (
+      reason === 'OVERLOAD' &&
+      (usageAnomaly.severity === 'MEDIUM' || usageAnomaly.severity === 'HIGH')
+    ) {
       const sourceModel = this.extractModel(input.requestBody);
       if (sourceModel) {
         const mapping =
@@ -104,6 +154,7 @@ class ControlEngineService {
       endpoint: input.endpoint,
       method: input.method,
       isAnomaly: usageAnomaly.isAnomaly,
+      reason,
       severity: usageAnomaly.severity,
       throttleMs,
       actions,
@@ -115,7 +166,7 @@ class ControlEngineService {
     };
 
     if (actions.length > 0) {
-      await this.logEnforcement(decision);
+      await this.logEnforcement(decision, input.policySignal?.details);
     }
 
     return decision;
@@ -133,7 +184,7 @@ class ControlEngineService {
     const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
 
     try {
-      return await (prisma as any).enforcementLog.findMany({
+      return await this.prisma.enforcementLog.findMany({
         where,
         take: limit,
         orderBy: { timestamp: 'desc' }
@@ -152,7 +203,7 @@ class ControlEngineService {
     try {
       await Promise.all([
         ...DEFAULT_FALLBACK_CONFIGS.map((entry) =>
-          (prisma as any).fallbackConfig.upsert({
+          this.prisma.fallbackConfig.upsert({
             where: { primaryService: entry.primaryService },
             update: {},
             create: {
@@ -163,7 +214,7 @@ class ControlEngineService {
           })
         ),
         ...DEFAULT_MODEL_DOWNGRADES.map((entry) =>
-          (prisma as any).modelDowngradeMapping.upsert({
+          this.prisma.modelDowngradeMapping.upsert({
             where: {
               service_sourceModel: {
                 service: entry.service,
@@ -187,9 +238,9 @@ class ControlEngineService {
     }
   }
 
-  private async getFallbackService(primaryService: string): Promise<string | null> {
+  private async getFallbackService(primaryService: ProviderService): Promise<ProviderService | null> {
     try {
-      const config = await (prisma as any).fallbackConfig.findUnique({
+      const config = await this.prisma.fallbackConfig.findUnique({
         where: { primaryService }
       });
 
@@ -197,7 +248,7 @@ class ControlEngineService {
         return null;
       }
 
-      return config.fallbackService || null;
+      return (config.fallbackService as ProviderService) || null;
     } catch (error) {
       console.error('Failed to load fallback config:', error);
       return null;
@@ -206,7 +257,7 @@ class ControlEngineService {
 
   private async getDowngradeMapping(service: string, sourceModel: string) {
     try {
-      return await (prisma as any).modelDowngradeMapping.findUnique({
+      return await this.prisma.modelDowngradeMapping.findUnique({
         where: {
           service_sourceModel: {
             service,
@@ -240,18 +291,22 @@ class ControlEngineService {
     };
   }
 
-  private async logEnforcement(decision: ControlDecision) {
-    const details = decision.modelDowngrade
-      ? `Model downgraded from ${decision.modelDowngrade.from} to ${decision.modelDowngrade.to}`
-      : null;
+  private async logEnforcement(decision: ControlDecision, policyDetails?: string) {
+    const details = [
+      decision.modelDowngrade
+        ? `Model downgraded from ${decision.modelDowngrade.from} to ${decision.modelDowngrade.to}`
+        : null,
+      policyDetails || null
+    ].filter(Boolean).join(' | ') || null;
 
     try {
-      await (prisma as any).enforcementLog.create({
+      await this.prisma.enforcementLog.create({
         data: {
           service: decision.service,
           routedService: decision.routedService,
           endpoint: decision.endpoint,
           method: decision.method,
+          reason: decision.reason,
           severity: decision.severity,
           action: decision.actions.join(','),
           throttleMs: decision.throttleMs,
