@@ -6,12 +6,14 @@ import { anomalyDetector } from './services/anomaly.service';
 import { controlEngine } from './services/control-engine.service';
 import { AnomalySeverity, reloadUsageModel } from './ml/detect-anomaly';
 import { trainUsageBaseline } from './ml/train-model';
+import { ensureUsageModelReady } from './ml/usage-model-bootstrap';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const VALID_SEVERITIES: AnomalySeverity[] = ['NONE', 'LOW', 'MEDIUM', 'HIGH'];
+let usageModelStatus: 'existing' | 'trained' | 'unavailable' = 'unavailable';
 
 app.use(express.json());
 
@@ -19,7 +21,8 @@ app.use(express.json());
 app.get('/health', (req, res) => {
     res.json({
         status: 'SaaS-Sentinel is active',
-        monitoredServices: ['openai', 'anthropic', 'stripe']
+        monitoredServices: ['openai', 'anthropic', 'stripe'],
+        usageModelStatus
     });
 });
 
@@ -90,8 +93,16 @@ app.post('/ml/retrain', async (req, res) => {
 // Initialize Proxy Layer
 setupProxy(app);
 
-app.listen(PORT, () => {
-    console.log(`
+async function startServer() {
+    const usageModel = await ensureUsageModelReady();
+    usageModelStatus = usageModel.source;
+
+    if (!usageModel.ready) {
+        console.warn('Usage model is unavailable. Control-engine mitigations remain disabled until metrics exist and the model is trained.');
+    }
+
+    app.listen(PORT, () => {
+        console.log(`
   SaaS-Sentinel Proxy Active
   Listening on http://localhost:${PORT}
   Available Proxies:
@@ -100,5 +111,12 @@ app.listen(PORT, () => {
     - Stripe:    http://localhost:${PORT}/proxy/stripe
 
   Metrics Dashboard: http://localhost:${PORT}/metrics
+  Usage Model: ${usageModelStatus}
   `);
+    });
+}
+
+startServer().catch((error) => {
+    console.error('Failed to start SaaS-Sentinel:', error);
+    process.exitCode = 1;
 });
