@@ -2,10 +2,13 @@
   "name": "saas-sentinel",
   "version": "1.0.0",
   "main": "index.js",
+  "packageManager": "bun@1.3.10",
   "scripts": {
-    "dev": "ts-node src/server.ts",
-    "test": "ts-node src/test-proxy.ts",
-    "db:push": "prisma db push"
+    "dev": "bun run src/server.ts",
+    "test": "bun run src/test-proxy.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "db:push": "bunx prisma db push",
+    "db:generate": "bunx prisma generate"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +20,7 @@
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.5",
+    "ml-isolation-forest": "^0.1.0",
     "prisma": "^5.14.0",
     "zod": "^4.3.6"
   },
