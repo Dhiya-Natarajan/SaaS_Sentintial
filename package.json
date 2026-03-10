@@ -4,7 +4,7 @@
   "main": "index.js",
   "packageManager": "bun@1.3.10",
   "scripts": {
-    "dev": "bun run src/server.ts",
+    "dev": "npm run src/server.ts",
     "test": "bun run src/test-proxy.ts",
     "typecheck": "bunx tsc --noEmit",
     "db:push": "bunx prisma db push",

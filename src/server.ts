@@ -8,122 +8,183 @@ import { AnomalySeverity, reloadUsageModel } from './ml/detect-anomaly';
 import { trainUsageBaseline } from './ml/train-model';
 import { buildRetrainStatus } from './ml/retrain-status';
 import { ensureUsageModelReady } from './ml/usage-model-bootstrap';
+import { getSummary, getTrend, getServiceBreakdown, getAnomalies } from './services/cost-analytics.service';
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3001;
 const VALID_SEVERITIES: AnomalySeverity[] = ['NONE', 'LOW', 'MEDIUM', 'HIGH'];
 let usageModelStatus: 'existing' | 'trained' | 'unavailable' = 'unavailable';
 
 app.use(express.json());
 
-// Basic health check
 app.get('/health', (req, res) => {
-    res.json({
-        status: 'SaaS-Sentinel is active',
-        monitoredServices: ['openai', 'anthropic', 'stripe'],
-        usageModelStatus
-    });
+  res.json({
+    status: 'SaaS-Sentinel is active',
+    monitoredServices: ['openai', 'anthropic', 'stripe'],
+    usageModelStatus
+  });
 });
 
-// View Real-time Metrics (DB version)
 app.get('/metrics', async (req, res) => {
-    try {
-        const stats = await getStats();
-        res.json(stats);
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const stats = await getStats();
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// View enforcement logs from the control engine
 app.get('/enforcements', async (req, res) => {
-    try {
-        const limit = Number(req.query.limit || 50);
-        const service = typeof req.query.service === 'string' ? req.query.service : undefined;
-        const rawSeverity = typeof req.query.severity === 'string'
-            ? req.query.severity.toUpperCase()
-            : undefined;
+  try {
+    const limit = Number(req.query.limit || 50);
 
-        if (rawSeverity && !VALID_SEVERITIES.includes(rawSeverity as AnomalySeverity)) {
-            return res.status(400).json({
-                error: `Invalid severity. Allowed values: ${VALID_SEVERITIES.join(', ')}`
-            });
-        }
+    const service =
+      typeof req.query.service === 'string'
+        ? req.query.service
+        : undefined;
 
-        const severity = rawSeverity as AnomalySeverity | undefined;
+    const rawSeverity =
+      typeof req.query.severity === 'string'
+        ? req.query.severity.toUpperCase()
+        : undefined;
 
-        const logs = await controlEngine.getEnforcementLogs({
-            limit: Number.isFinite(limit) ? limit : 50,
-            service,
-            severity
-        });
-
-        res.json({
-            count: logs.length,
-            logs
-        });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
+    if (rawSeverity && !VALID_SEVERITIES.includes(rawSeverity as AnomalySeverity)) {
+      return res.status(400).json({
+        error: `Invalid severity. Allowed values: ${VALID_SEVERITIES.join(', ')}`
+      });
     }
+
+    const severity = rawSeverity as AnomalySeverity | undefined;
+
+    const logs = await controlEngine.getEnforcementLogs({
+      limit: Number.isFinite(limit) ? limit : 50,
+      service,
+      severity
+    });
+
+    res.json({
+      count: logs.length,
+      logs
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Admin endpoint to retrain the ML model
 app.post('/ml/retrain', async (req, res) => {
-    try {
-        const [usageModel, anomalyModelTrained] = await Promise.all([
-            trainUsageBaseline(),
-            anomalyDetector.trainBaseline()
-        ]);
+  try {
 
-        if (usageModel) {
-            reloadUsageModel();
-        }
+    const [usageModel, anomalyModelTrained] = await Promise.all([
+      trainUsageBaseline(),
+      anomalyDetector.trainBaseline()
+    ]);
 
-        const retrainStatus = buildRetrainStatus(
-            Boolean(usageModel),
-            anomalyModelTrained
-        );
-
-        res.json({
-            status: retrainStatus.status,
-            message: retrainStatus.message,
-            usageModelTrained: Boolean(usageModel),
-            responseAnomalyModelTrained: anomalyModelTrained
-        });
-    } catch (error: any) {
-        res.status(500).json({ error: error.message });
+    if (usageModel) {
+      reloadUsageModel();
     }
+
+    const retrainStatus = buildRetrainStatus(
+      Boolean(usageModel),
+      anomalyModelTrained
+    );
+
+    res.json({
+      status: retrainStatus.status,
+      message: retrainStatus.message,
+      usageModelTrained: Boolean(usageModel),
+      responseAnomalyModelTrained: anomalyModelTrained
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Initialize Proxy Layer
+app.get('/analytics/summary', async (req, res) => {
+  try {
+    const data = await getSummary();
+    res.json(data);
+  } catch (error) {
+    console.error('Summary analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch summary' });
+  }
+});
+
+app.get('/analytics/trend', async (req, res) => {
+  try {
+    const data = await getTrend();
+    res.json(data);
+  } catch (error) {
+    console.error('Trend analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch trend' });
+  }
+});
+
+app.get('/analytics/service-breakdown', async (req, res) => {
+  try {
+    const data = await getServiceBreakdown();
+    res.json(data);
+  } catch (error) {
+    console.error('Service breakdown error:', error);
+    res.status(500).json({ error: 'Failed to fetch breakdown' });
+  }
+});
+
+app.get('/analytics/anomalies', async (req, res) => {
+  try {
+    const data = await getAnomalies();
+    res.json(data);
+  } catch (error) {
+    console.error('Anomaly analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch anomalies' });
+  }
+});
+
 setupProxy(app);
 
 async function startServer() {
-    const usageModel = await ensureUsageModelReady();
-    usageModelStatus = usageModel.source;
 
-    if (!usageModel.ready) {
-        console.warn('Usage model is unavailable. Control-engine mitigations remain disabled until metrics exist and the model is trained.');
-    }
+  const usageModel = await ensureUsageModelReady();
 
-    app.listen(PORT, () => {
-        console.log(`
+  usageModelStatus = usageModel.source;
+
+  if (!usageModel.ready) {
+    console.warn(
+      'Usage model is unavailable. Control-engine mitigations remain disabled until metrics exist and the model is trained.'
+    );
+  }
+
+  app.listen(PORT, () => {
+
+    console.log(`
   SaaS-Sentinel Proxy Active
+
   Listening on http://localhost:${PORT}
+
   Available Proxies:
     - OpenAI:    http://localhost:${PORT}/proxy/openai
     - Anthropic: http://localhost:${PORT}/proxy/anthropic
     - Stripe:    http://localhost:${PORT}/proxy/stripe
 
   Metrics Dashboard: http://localhost:${PORT}/metrics
+
+  Analytics:
+    - Summary:            http://localhost:${PORT}/analytics/summary
+    - Trend:              http://localhost:${PORT}/analytics/trend
+    - Service Breakdown:  http://localhost:${PORT}/analytics/service-breakdown
+    - Anomalies:          http://localhost:${PORT}/analytics/anomalies
+
   Usage Model: ${usageModelStatus}
-  `);
-    });
+    `);
+
+  });
+
 }
 
 startServer().catch((error) => {
-    console.error('Failed to start SaaS-Sentinel:', error);
-    process.exitCode = 1;
+  console.error('Failed to start SaaS-Sentinel:', error);
+  process.exitCode = 1;
 });
