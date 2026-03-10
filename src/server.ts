@@ -9,6 +9,7 @@ import { trainUsageBaseline } from './ml/train-model';
 import { buildRetrainStatus } from './ml/retrain-status';
 import { ensureUsageModelReady } from './ml/usage-model-bootstrap';
 import { getSummary, getTrend, getServiceBreakdown, getAnomalies } from './services/cost-analytics.service';
+import { predictCost } from './services/forecast.service'
 
 dotenv.config();
 
@@ -143,22 +144,29 @@ app.get('/analytics/anomalies', async (req, res) => {
   }
 });
 
+app.get('/analytics/predictions', async (req, res) => {
+  try {
+    const prediction = await predictCost()
+    res.json(prediction)
+  } catch (error) {
+    console.error("Prediction error:", error)
+    res.status(500).json({
+      error: "Failed to generate predictions"
+    })
+  }
+})
+
 setupProxy(app);
 
 async function startServer() {
-
   const usageModel = await ensureUsageModelReady();
-
   usageModelStatus = usageModel.source;
-
   if (!usageModel.ready) {
     console.warn(
       'Usage model is unavailable. Control-engine mitigations remain disabled until metrics exist and the model is trained.'
     );
   }
-
   app.listen(PORT, () => {
-
     console.log(`
   SaaS-Sentinel Proxy Active
 
