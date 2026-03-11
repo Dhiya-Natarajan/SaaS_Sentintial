@@ -18,6 +18,7 @@ model ApiMetric {
   cost         Float    @default(0.0)
   requestSize  Int      @default(0)
   responseSize Int      @default(0)
+  actionTaken String?
 }
 
 model ServiceCredential {
