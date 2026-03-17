@@ -74,7 +74,7 @@ export default function SidebarNav() {
                     )}
                   </Link>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="text-mono text-xs tracking-widest uppercase">
+                <TooltipContent side="right" className="font-mono text-xs tracking-widest uppercase bg-zinc-900 text-zinc-100 border-zinc-700">
                   {label}
                 </TooltipContent>
               </Tooltip>
@@ -88,7 +88,7 @@ export default function SidebarNav() {
           <TooltipTrigger asChild>
             <ThemeIconToggle />
           </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">Toggle theme</TooltipContent>
+          <TooltipContent side="right" className="font-mono text-xs bg-zinc-900 text-zinc-100 border-zinc-700">Toggle theme</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -96,7 +96,7 @@ export default function SidebarNav() {
               <div className="w-2 h-2 rounded-full bg-green-500 animate-live" />
             </div>
           </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">
+          <TooltipContent side="right" className="font-mono text-xs bg-zinc-900 text-zinc-100 border-zinc-700">
             Proxy Online
           </TooltipContent>
         </Tooltip>
