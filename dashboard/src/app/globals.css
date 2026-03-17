@@ -5,7 +5,44 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Light theme (default) ── */
   :root {
+    --background:           210 20% 98%;
+    --foreground:           222 24% 10%;
+
+    --card:                 0 0% 100%;
+    --card-foreground:      222 24% 10%;
+
+    --popover:              0 0% 100%;
+    --popover-foreground:   222 24% 10%;
+
+    --primary:              214 100% 50%;
+    --primary-foreground:   0 0% 100%;
+
+    --secondary:            210 16% 93%;
+    --secondary-foreground: 222 24% 10%;
+
+    --muted:                210 16% 93%;
+    --muted-foreground:     215 14% 44%;
+
+    --accent:               38 95% 48%;
+    --accent-foreground:    0 0% 100%;
+
+    --destructive:          0 84% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:               214 18% 88%;
+    --input:                214 18% 88%;
+    --ring:                 214 100% 50%;
+
+    --radius: 0.375rem;
+
+    --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
+    --font-display: 'DM Sans', sans-serif;
+  }
+
+  /* ── Dark theme ── */
+  .dark {
     --background:         224 12% 6%;
     --foreground:         220 14% 96%;
 
@@ -33,11 +70,6 @@
     --border:             224 8% 18%;
     --input:              224 8% 18%;
     --ring:               214 100% 60%;
-
-    --radius: 0.375rem;
-
-    --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
-    --font-display: 'DM Sans', sans-serif;
   }
 }
 
@@ -50,6 +82,10 @@
     @apply bg-background text-foreground;
     font-family: var(--font-display);
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* Scanline texture — dark mode only */
+  .dark body {
     background-image:
       repeating-linear-gradient(
         0deg,
@@ -78,6 +114,11 @@
   .border-glow-red {
     box-shadow: 0 0 0 1px rgba(239,68,68,0.35), inset 0 0 20px rgba(239,68,68,0.04);
   }
+
+  /* In light mode, tone down glows */
+  :root:not(.dark) .border-glow-blue  { box-shadow: 0 0 0 1px rgba(59,130,246,0.2);  }
+  :root:not(.dark) .border-glow-amber { box-shadow: 0 0 0 1px rgba(245,158,11,0.2);  }
+  :root:not(.dark) .border-glow-red   { box-shadow: 0 0 0 1px rgba(239,68,68,0.2);   }
 
   .animate-live {
     animation: live-pulse 2s ease-in-out infinite;

@@ -11,6 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { ThemeIconToggle } from "@/components/ThemeToggle"
 import {
   LayoutDashboard,
   Layers,
@@ -83,6 +84,12 @@ export default function SidebarNav() {
 
         {/* Bottom status */}
         <Separator className="w-8 mt-2 mb-3" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ThemeIconToggle />
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">Toggle theme</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="flex flex-col items-center gap-1 cursor-default">
