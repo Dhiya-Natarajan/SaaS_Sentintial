@@ -115,7 +115,7 @@ export default function ActivityLogTable({ rows }: { rows: LogRow[] }) {
             placeholder="Filter by service or path..."
             className="
               w-full h-8 pl-8 pr-3 rounded-md text-xs font-mono
-              bg-zinc-900 border border-border text-foreground
+              bg-input border border-border text-foreground
               placeholder:text-muted-foreground
               focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50
               transition-colors
@@ -124,7 +124,7 @@ export default function ActivityLogTable({ rows }: { rows: LogRow[] }) {
         </div>
 
         {/* Status filter pills */}
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-zinc-900 border border-border">
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border">
           {filterBtns.map(({ key, label }) => (
             <button
               key={key}

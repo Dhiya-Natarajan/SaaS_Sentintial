@@ -1,4 +1,5 @@
 "use client"
+// components/ThemeToggle.tsx
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { Sun, Moon, Monitor } from "lucide-react"
@@ -22,7 +23,7 @@ export function ThemeToggle() {
   )
 
   return (
-    <div className="flex items-center gap-1 p-1 rounded-lg bg-zinc-900 border border-border">
+    <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-border">
       {options.map(({ value, icon: Icon, label }) => {
         const active = theme === value
         return (

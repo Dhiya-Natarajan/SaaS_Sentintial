@@ -1,4 +1,5 @@
 "use client"
+// app/settings/page.tsx
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -60,7 +61,7 @@ function TextInput({
       defaultValue={defaultValue}
       placeholder={placeholder}
       className={`
-        h-8 px-3 rounded-md text-xs bg-zinc-900 border border-border
+        h-8 px-3 rounded-md text-xs bg-input border border-border
         text-foreground placeholder:text-muted-foreground
         focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50
         transition-colors w-56
@@ -83,7 +84,7 @@ function NumberInput({
         min={min}
         max={max}
         className="
-          h-8 px-3 rounded-md text-xs font-mono bg-zinc-900 border border-border
+          h-8 px-3 rounded-md text-xs font-mono bg-input border border-border
           text-foreground placeholder:text-muted-foreground
           focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50
           transition-colors w-28
@@ -103,7 +104,7 @@ function SelectInput({
     <select
       defaultValue={defaultValue}
       className="
-        h-8 px-3 rounded-md text-xs font-mono bg-zinc-900 border border-border
+        h-8 px-3 rounded-md text-xs font-mono bg-input border border-border
         text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50
         focus:border-blue-500/50 transition-colors w-40
       "
@@ -120,10 +121,11 @@ function Toggle({ defaultChecked = false }: { defaultChecked?: boolean }) {
     <label className="relative inline-flex items-center cursor-pointer">
       <input type="checkbox" defaultChecked={defaultChecked} className="sr-only peer" />
       <div className="
-        w-9 h-5 rounded-full bg-zinc-700 border border-zinc-600
+        w-9 h-5 rounded-full bg-input border border-border
         peer-checked:bg-blue-600 peer-checked:border-blue-500
         after:content-[''] after:absolute after:top-[3px] after:left-[3px]
         after:w-3.5 after:h-3.5 after:rounded-full after:bg-white
+        dark:after:bg-zinc-200
         after:transition-all peer-checked:after:translate-x-4
         transition-colors
       " />
@@ -346,7 +348,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3">
           <button className="
             h-8 px-4 rounded-md font-mono text-xs text-muted-foreground
-            border border-border hover:bg-white/5 transition-colors
+            border border-border hover:bg-muted transition-colors
           ">
             Reset defaults
           </button>
