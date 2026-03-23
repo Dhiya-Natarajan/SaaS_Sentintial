@@ -125,7 +125,12 @@ export default async function AnomaliesPage() {
             </Badge>
           )}
           <p className="font-mono text-[10px] text-muted-foreground hidden md:block">
-            {new Date().toUTCString()}
+            {new Date().toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit", month: "short", year: "numeric",
+            hour: "2-digit", minute: "2-digit", second: "2-digit",
+            hour12: false,
+          }).toUpperCase() + " IST"}
           </p>
         </div>
       </header>
