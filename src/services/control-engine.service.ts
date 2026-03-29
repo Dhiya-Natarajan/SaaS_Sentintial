@@ -3,9 +3,8 @@ import {
   AnomalySeverity,
   detectUsageAnomaly
 } from '../ml/detect-anomaly';
+import { prisma } from '../lib/prisma';
 import type { ProviderService } from '../providers/provider-routing';
-
-const prisma = new PrismaClient();
 
 const THROTTLE_MS_BY_SEVERITY: Record<AnomalySeverity, number> = {
   NONE: 0,

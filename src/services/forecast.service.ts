@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client'
 import { forecastNextHours } from '../ml/forecast-cost'
-
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 const COST_MAP: Record<string, number> = {
   openai: 0.002,

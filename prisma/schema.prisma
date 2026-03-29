@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -22,12 +22,36 @@ model ApiMetric {
 }
 
 model ServiceCredential {
-  id        String   @id @default(uuid())
-  service   String   @unique
-  apiKey    String
-  apiSecret String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(uuid())
+  service       String
+  environment   String   @default("development")
+  secretRef     String
+  version       String?
+  active        Boolean  @default(true)
+  lastRotatedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([service, environment])
+}
+
+model PricingRule {
+  id             String   @id @default(uuid())
+  code           String   @unique
+  service        String
+  method         String?
+  endpointPattern String?
+  model          String?
+  billingUnit    String   @default("REQUEST")
+  flatRate       Float
+  currency       String   @default("USD")
+  active         Boolean  @default(true)
+  effectiveFrom  DateTime @default(now())
+  effectiveTo    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([service, active, effectiveFrom])
 }
 
 model FallbackConfig {

@@ -1,11 +1,9 @@
 // @ts-ignore
 import { IsolationForest } from 'ml-isolation-forest';
-import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
+import { prisma } from '../lib/prisma';
 import { ISOLATION_FOREST_MODEL_PATH } from '../ml/model-paths';
-
-const prisma = new PrismaClient();
 
 class SimpleScaler {
     private mins: number[] = [];
@@ -72,7 +70,7 @@ export class AnomalyDetectionService {
 
                 if (modelData.forest && modelData.scaler) {
                     this.scaler.fromJSON(modelData.scaler);
-                    this.threshold = modelData.threshold || 0.6;
+                    this.threshold =  0.75;
                     this.forest = this.reconstructForest(modelData.forest, modelData.trainSize);
                     this.isTrained = true;
                     console.log(`✅ Model loaded successfully (Threshold: ${this.threshold.toFixed(4)})`);

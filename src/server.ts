@@ -1,7 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import { setupProxy } from './middleware/proxy.middleware';
-import { getStats } from './services/metrics.service';
+import { ensureDefaultPricingRules, getPricingRules, getStats } from './services/metrics.service';
 import { anomalyDetector } from './services/anomaly.service';
 import { controlEngine } from './services/control-engine.service';
 import { AnomalySeverity, reloadUsageModel } from './ml/detect-anomaly';
@@ -32,6 +32,18 @@ app.get('/metrics', async (req, res) => {
   try {
     const stats = await getStats();
     res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/pricing-rules', async (req, res) => {
+  try {
+    const rules = await getPricingRules();
+    res.json({
+      count: rules.length,
+      rules
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -159,6 +171,7 @@ app.get('/analytics/predictions', async (req, res) => {
 setupProxy(app);
 
 async function startServer() {
+  await ensureDefaultPricingRules();
   const usageModel = await ensureUsageModelReady();
   usageModelStatus = usageModel.source;
   if (!usageModel.ready) {
