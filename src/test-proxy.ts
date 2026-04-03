@@ -19,6 +19,7 @@ const TEST_DB_PATH = path.join(process.cwd(), 'prisma', TEST_DB_BASENAME);
 const PRISMA_SCHEMA_PATH = path.join(process.cwd(), 'prisma', 'schema.prisma');
 const USAGE_MODEL_PATH = path.join(process.cwd(), 'ml_models', 'usage-model.json');
 const DETERMINISTIC_USAGE_THRESHOLD = 3.5;
+const OPENAI_BURST_REQUEST_COUNT = 12;
 
 interface HealthResponse {
   status: string;
@@ -50,10 +51,22 @@ interface SummaryResponse {
   totalCost: number;
 }
 
+interface BlockedResponse {
+  error: string;
+  reason: string;
+  actions: string[];
+}
+
 interface TestDatabaseConfig {
   provider: string;
   databaseUrl: string;
   cleanup: () => void;
+}
+
+interface TestRunOptions {
+  backendPort?: number;
+  holdOpen: boolean;
+  dashboardMode: boolean;
 }
 
 interface MockRequestRecord {
@@ -78,6 +91,47 @@ interface EnforcementResponse {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomPortStart(min = 20000, max = 50000) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function parseInteger(input: string | undefined) {
+  if (!input) {
+    return undefined;
+  }
+
+  const value = Number(input);
+  if (!Number.isInteger(value) || value <= 0) {
+    return undefined;
+  }
+
+  return value;
+}
+
+function readFlagValue(args: string[], flagName: string) {
+  const prefix = `${flagName}=`;
+  const match = args.find((arg) => arg.startsWith(prefix));
+  return match ? match.slice(prefix.length) : undefined;
+}
+
+function parseRunOptions(args: string[]): TestRunOptions {
+  const dashboardMode = args.includes('--dashboard');
+  const backendPort =
+    parseInteger(readFlagValue(args, '--backend-port')) ||
+    parseInteger(process.env.TEST_BACKEND_PORT) ||
+    (dashboardMode ? 3001 : undefined);
+  const holdOpen =
+    dashboardMode ||
+    args.includes('--hold-open') ||
+    process.env.TEST_KEEP_BACKEND_RUNNING === '1';
+
+  return {
+    backendPort,
+    holdOpen,
+    dashboardMode
+  };
 }
 
 async function readJsonBody(req: IncomingMessage) {
@@ -160,7 +214,7 @@ async function startOpenAIMockServer() {
     sendJson(res, 404, { error: 'Not found' });
   });
 
-  const port = await listenOnAvailablePort(server, 4010);
+  const port = await listenOnAvailablePort(server, randomPortStart());
   return { server, port, requests };
 }
 
@@ -199,7 +253,7 @@ async function startAnthropicMockServer() {
     sendJson(res, 404, { error: { message: 'Not found' } });
   });
 
-  const port = await listenOnAvailablePort(server, 4110);
+  const port = await listenOnAvailablePort(server, randomPortStart());
   return { server, port, requests };
 }
 
@@ -408,9 +462,55 @@ function prepareTestDatabase(databaseUrl: string, cleanup: () => void) {
 
 async function findAvailablePort() {
   const probe = createServer();
-  const port = await listenOnAvailablePort(probe, 3100);
+  const port = await listenOnAvailablePort(probe, randomPortStart());
   await closeServer(probe);
   return port;
+}
+
+async function ensurePortAvailable(port: number) {
+  const probe = createServer();
+
+  try {
+    await listen(probe, port);
+  } catch (error) {
+    if (isAddressInUse(error)) {
+      throw new Error(
+        `Port ${port} is already in use. Stop the existing process on that port or rerun without --dashboard.`
+      );
+    }
+
+    throw error;
+  } finally {
+    if (probe.listening) {
+      await closeServer(probe);
+    }
+  }
+}
+
+async function resolveBackendPort(options: TestRunOptions) {
+  if (options.backendPort) {
+    await ensurePortAvailable(options.backendPort);
+    return options.backendPort;
+  }
+
+  return findAvailablePort();
+}
+
+async function waitForManualShutdown(apiBaseUrl: string) {
+  console.log(
+    `\nDashboard smoke mode is active on ${apiBaseUrl}. Keep the dashboard open and press Ctrl+C here when you're done.`
+  );
+
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      process.off('SIGINT', finish);
+      process.off('SIGTERM', finish);
+      resolve();
+    };
+
+    process.on('SIGINT', finish);
+    process.on('SIGTERM', finish);
+  });
 }
 
 function startBackend(config: {
@@ -486,6 +586,7 @@ async function waitForHealthCheck(apiBaseUrl: string) {
 }
 
 async function run() {
+  const runOptions = parseRunOptions(process.argv.slice(2));
   const testDatabase = resolveTestDatabaseConfig();
   const restoreUsageModel = createDeterministicUsageModel();
   let openaiMock: Awaited<ReturnType<typeof startOpenAIMockServer>> | null = null;
@@ -495,7 +596,7 @@ async function run() {
   try {
     openaiMock = await startOpenAIMockServer();
     anthropicMock = await startAnthropicMockServer();
-    const backendPort = await findAvailablePort();
+    const backendPort = await resolveBackendPort(runOptions);
     const apiBaseUrl = `http://localhost:${backendPort}`;
     prepareTestDatabase(testDatabase.databaseUrl, testDatabase.cleanup);
 
@@ -544,40 +645,63 @@ async function run() {
     );
 
     const burstResponses = [];
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < OPENAI_BURST_REQUEST_COUNT; index += 1) {
       const response = await axios.post(
         `${apiBaseUrl}/proxy/openai/v1/chat/completions`,
         {
           model: 'gpt-4',
           messages: [{ role: 'user', content: `Burst request ${index}` }]
+        },
+        {
+          validateStatus: () => true
         }
       );
 
       burstResponses.push(response);
     }
 
+    const blockedBurstResponses = burstResponses.filter(
+      (response) =>
+        response.status === 403 &&
+        response.data?.reason === 'OVERLOAD' &&
+        Array.isArray(response.data?.actions) &&
+        response.data.actions.includes('BLOCK')
+    );
+
     assert.ok(
       burstResponses.some(
         (response) =>
+          response.status === 200 &&
           response.data?.choices?.[0]?.message?.content ===
-            'mock-anthropic-response' &&
+            'mock-openai-response' &&
           response.data?.model === 'gpt-3.5-turbo'
       )
     );
+    assert.ok(blockedBurstResponses.length >= 3);
+
+    const blockedResponse = await axios.get<BlockedResponse>(
+      `${apiBaseUrl}/proxy/openai/v1/models`,
+      {
+        validateStatus: () => true
+      }
+    );
+    assert.equal(blockedResponse.status, 403);
+    assert.equal(blockedResponse.data.reason, 'OVERLOAD');
+    assert.ok(blockedResponse.data.actions.includes('BLOCK'));
 
     const metrics = await axios.get<MetricsResponse>(`${apiBaseUrl}/metrics`);
-    assert.ok(metrics.data.totalCalls >= 9);
+    assert.ok(metrics.data.totalCalls >= OPENAI_BURST_REQUEST_COUNT + 3);
     assert.ok(metrics.data.breakdown.some((item) => item.service === 'openai'));
     assert.ok(
       metrics.data.breakdown.some(
-        (item) => item.service === 'anthropic' && item.calls >= 2
+        (item) => item.service === 'anthropic' && item.calls >= 1
       )
     );
 
     const summary = await axios.get<SummaryResponse>(
       `${apiBaseUrl}/analytics/summary`
     );
-    assert.ok(summary.data.totalRequests >= 9);
+    assert.ok(summary.data.totalRequests >= OPENAI_BURST_REQUEST_COUNT + 3);
     assert.ok(summary.data.totalCost >= 0);
 
     const enforcements = await axios.get<EnforcementResponse>(
@@ -595,10 +719,7 @@ async function run() {
       enforcements.data.logs.some(
         (log) =>
           log.severity === 'HIGH' &&
-          log.routedService === 'anthropic' &&
-          log.action.includes('THROTTLE') &&
-          log.action.includes('REROUTE') &&
-          log.action.includes('DOWNGRADE')
+          log.action.includes('BLOCK')
       )
     );
 
@@ -609,10 +730,14 @@ async function run() {
     );
     assert.ok(
       anthropicMock.requests.filter((request) => request.path === '/v1/messages')
-        .length >= 2
+        .length >= 1
     );
 
     console.log('\nLocal proxy integration test passed.');
+
+    if (runOptions.holdOpen) {
+      await waitForManualShutdown(apiBaseUrl);
+    }
   } finally {
     if (backend) {
       await stopBackend(backend);

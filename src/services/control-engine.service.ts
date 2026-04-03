@@ -91,6 +91,9 @@ export class ControlEngineService {
 
     const usageAnomaly = this.detectUsage(input.currentUsage);
     const isSecurityBlock = input.policySignal?.block === true;
+    const isHighSeverityOverloadBlock =
+      usageAnomaly.severity === 'HIGH' &&
+      usageAnomaly.isAnomaly;
     const reason: ControlReason = isSecurityBlock
       ? 'SECURITY_POLICY'
       : usageAnomaly.isAnomaly
@@ -101,7 +104,7 @@ export class ControlEngineService {
       : 0;
     const actions: ControlAction[] = [];
 
-    if (isSecurityBlock) {
+    if (isSecurityBlock || isHighSeverityOverloadBlock) {
       actions.push('BLOCK');
     } else if (throttleMs > 0) {
       actions.push('THROTTLE');
@@ -111,7 +114,8 @@ export class ControlEngineService {
     if (
       reason === 'OVERLOAD' &&
       usageAnomaly.severity === 'HIGH' &&
-      input.rerouteEligible
+      input.rerouteEligible &&
+      !isHighSeverityOverloadBlock
     ) {
       const fallback = await this.getFallbackService(input.service);
       if (
@@ -130,6 +134,7 @@ export class ControlEngineService {
     if (
       reason === 'OVERLOAD' &&
       (usageAnomaly.severity === 'MEDIUM' || usageAnomaly.severity === 'HIGH')
+      && !isHighSeverityOverloadBlock
     ) {
       const sourceModel = this.extractModel(input.requestBody);
       if (sourceModel) {

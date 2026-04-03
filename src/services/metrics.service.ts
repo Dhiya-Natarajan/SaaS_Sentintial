@@ -10,6 +10,10 @@ export interface ApiMetric {
     statusCode: number;
     latencyMs: number;
     timestamp: string;
+    cost?: number;
+    requestSize?: number;
+    responseSize?: number;
+    actionTaken?: string;
 }
 
 interface PricingRuleSeed {
@@ -48,6 +52,14 @@ const DEFAULT_PRICING_RULES: PricingRuleSeed[] = [
 ];
 
 let pricingDefaultsInitialized = false;
+
+function getErrorMessage(error: unknown) {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return String(error);
+}
 
 function isPrismaTableMissing(error: unknown) {
     return (
@@ -105,7 +117,7 @@ export const ensureDefaultPricingRules = async (db: MetricsPrismaLike = prisma) 
         }
     } catch (error) {
         if (!isPrismaTableMissing(error)) {
-            console.error('Failed to initialize pricing rules:', error);
+            console.error('Failed to initialize pricing rules:', getErrorMessage(error));
         }
     }
 };
@@ -152,7 +164,7 @@ async function findPricingRule(metric: ApiMetric, db: MetricsPrismaLike = prisma
         return rules.find((rule) => matchesPricingRule(rule, metric)) || null;
     } catch (error) {
         if (!isPrismaTableMissing(error)) {
-            console.error('Failed to load pricing rule:', error);
+            console.error('Failed to load pricing rule:', getErrorMessage(error));
         }
 
         return null;
@@ -171,7 +183,7 @@ export const getPricingRules = async (db: MetricsPrismaLike = prisma) => {
         });
     } catch (error) {
         if (!isPrismaTableMissing(error)) {
-            console.error('Failed to fetch pricing rules:', error);
+            console.error('Failed to fetch pricing rules:', getErrorMessage(error));
         }
 
         return [];
@@ -180,6 +192,11 @@ export const getPricingRules = async (db: MetricsPrismaLike = prisma) => {
 
 export const logMetric = async (metric: ApiMetric, db: MetricsPrismaLike = prisma) => {
     try {
+        const cost =
+            typeof metric.cost === 'number'
+                ? metric.cost
+                : await calculateCost(metric, db);
+
         await db.apiMetric.create({
             data: {
                 service: metric.service,
@@ -188,7 +205,10 @@ export const logMetric = async (metric: ApiMetric, db: MetricsPrismaLike = prism
                 statusCode: metric.statusCode,
                 latencyMs: metric.latencyMs,
                 timestamp: new Date(metric.timestamp),
-                cost: await calculateCost(metric, db)
+                cost,
+                requestSize: metric.requestSize ?? 0,
+                responseSize: metric.responseSize ?? 0,
+                actionTaken: metric.actionTaken
             }
         });
         console.log(`📊 Metric Stored in DB: ${metric.service} ${metric.method} ${metric.statusCode}`);
