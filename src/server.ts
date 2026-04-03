@@ -8,15 +8,23 @@ import { AnomalySeverity, reloadUsageModel } from './ml/detect-anomaly';
 import { trainUsageBaseline } from './ml/train-model';
 import { buildRetrainStatus } from './ml/retrain-status';
 import { ensureUsageModelReady } from './ml/usage-model-bootstrap';
-import { getSummary, getTrend, getServiceBreakdown, getAnomalies } from './services/cost-analytics.service';
+import {
+  getSummary,
+  getTrend,
+  getServiceBreakdown,
+  getAnomalies,
+  getLiveMetrics,
+  getRecentActivity
+} from './services/cost-analytics.service';
 import { predictCost } from './services/forecast.service'
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const VALID_SEVERITIES: AnomalySeverity[] = ['NONE', 'LOW', 'MEDIUM', 'HIGH'];
 let usageModelStatus: 'existing' | 'trained' | 'unavailable' = 'unavailable';
+let bunKeepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
 app.use(express.json());
 
@@ -146,9 +154,41 @@ app.get('/analytics/service-breakdown', async (req, res) => {
   }
 });
 
+app.get('/analytics/activity', async (req, res) => {
+  try {
+    const rawLimit = Number(req.query.limit || 100);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 100;
+    const data = await getRecentActivity(limit);
+    res.json(data);
+  } catch (error) {
+    console.error('Activity analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch activity' });
+  }
+});
+
+app.get('/analytics/live', async (req, res) => {
+  try {
+    const data = await getLiveMetrics();
+    res.json(data);
+  } catch (error) {
+    console.error('Live analytics error:', error);
+    res.status(500).json({ error: 'Failed to fetch live metrics' });
+  }
+});
+
 app.get('/analytics/anomalies', async (req, res) => {
   try {
-    const data = await getAnomalies();
+    const rawLimit = Number(req.query.limit || 500);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : 500;
+    const action =
+      typeof req.query.action === 'string'
+        ? req.query.action
+        : undefined;
+
+    const data = await getAnomalies({
+      limit,
+      action
+    });
     res.json(data);
   } catch (error) {
     console.error('Anomaly analytics error:', error);
@@ -170,6 +210,26 @@ app.get('/analytics/predictions', async (req, res) => {
 
 setupProxy(app);
 
+function retainListenerUnderBun(server: ReturnType<typeof app.listen>) {
+  const runtimeWithBun = globalThis as typeof globalThis & { Bun?: unknown };
+
+  if (typeof runtimeWithBun.Bun === 'undefined' || bunKeepAliveTimer) {
+    return;
+  }
+
+  // Bun 1.3.x can exit once startup completes even with an Express listener open.
+  bunKeepAliveTimer = setInterval(() => {}, 60 * 60 * 1000);
+
+  server.once('close', () => {
+    if (!bunKeepAliveTimer) {
+      return;
+    }
+
+    clearInterval(bunKeepAliveTimer);
+    bunKeepAliveTimer = null;
+  });
+}
+
 async function startServer() {
   await ensureDefaultPricingRules();
   const usageModel = await ensureUsageModelReady();
@@ -179,7 +239,7 @@ async function startServer() {
       'Usage model is unavailable. Control-engine mitigations remain disabled until metrics exist and the model is trained.'
     );
   }
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`
   SaaS-Sentinel Proxy Active
 
@@ -196,12 +256,15 @@ async function startServer() {
     - Summary:            http://localhost:${PORT}/analytics/summary
     - Trend:              http://localhost:${PORT}/analytics/trend
     - Service Breakdown:  http://localhost:${PORT}/analytics/service-breakdown
+    - Activity:           http://localhost:${PORT}/analytics/activity
+    - Live:               http://localhost:${PORT}/analytics/live
     - Anomalies:          http://localhost:${PORT}/analytics/anomalies
 
   Usage Model: ${usageModelStatus}
     `);
 
   });
+  retainListenerUnderBun(server);
 
 }
 

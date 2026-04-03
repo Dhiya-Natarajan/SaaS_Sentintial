@@ -4,10 +4,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/ThemeToggle"
+import { getSentinelApiBaseUrl } from "@/lib/sentinel-config"
 import {
   Shield, Bell, Sliders, Server,
   AlertTriangle, Mail, Webhook, Palette,
 } from "lucide-react"
+
+const analyticsBaseUrl = getSentinelApiBaseUrl()
+const proxyBaseUrl = `${analyticsBaseUrl}/proxy`
+const analyticsPort = (() => {
+  try {
+    return new URL(analyticsBaseUrl).port || "80"
+  } catch {
+    return "3001"
+  }
+})()
 
 // ── Reusable primitives ───────────────────────────────────────────────────────
 function SettingsSection({
@@ -60,13 +71,9 @@ function TextInput({
     <input
       defaultValue={defaultValue}
       placeholder={placeholder}
-      className={`
-        h-8 px-3 rounded-md text-xs bg-input border border-border
-        text-foreground placeholder:text-muted-foreground
-        focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50
-        transition-colors w-56
-        ${mono ? "font-mono" : "font-display"}
-      `}
+      className={`h-8 w-56 rounded-md border border-border bg-input px-3 text-xs text-foreground placeholder:text-muted-foreground transition-colors focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50 ${
+        mono ? "font-mono" : "font-display"
+      }`}
     />
   )
 }
@@ -83,12 +90,7 @@ function NumberInput({
         defaultValue={defaultValue}
         min={min}
         max={max}
-        className="
-          h-8 px-3 rounded-md text-xs font-mono bg-input border border-border
-          text-foreground placeholder:text-muted-foreground
-          focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50
-          transition-colors w-28
-        "
+        className="h-8 w-28 rounded-md border border-border bg-input px-3 font-mono text-xs text-foreground placeholder:text-muted-foreground transition-colors focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
       />
       {unit && <span className="font-mono text-[10px] text-muted-foreground">{unit}</span>}
     </div>
@@ -103,11 +105,7 @@ function SelectInput({
   return (
     <select
       defaultValue={defaultValue}
-      className="
-        h-8 px-3 rounded-md text-xs font-mono bg-input border border-border
-        text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50
-        focus:border-blue-500/50 transition-colors w-40
-      "
+      className="h-8 w-40 rounded-md border border-border bg-input px-3 font-mono text-xs text-foreground transition-colors focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
     >
       {options.map(o => (
         <option key={o.value} value={o.value}>{o.label}</option>
@@ -120,15 +118,7 @@ function Toggle({ defaultChecked = false }: { defaultChecked?: boolean }) {
   return (
     <label className="relative inline-flex items-center cursor-pointer">
       <input type="checkbox" defaultChecked={defaultChecked} className="sr-only peer" />
-      <div className="
-        w-9 h-5 rounded-full bg-input border border-border
-        peer-checked:bg-blue-600 peer-checked:border-blue-500
-        after:content-[''] after:absolute after:top-[3px] after:left-[3px]
-        after:w-3.5 after:h-3.5 after:rounded-full after:bg-white
-        dark:after:bg-zinc-200
-        after:transition-all peer-checked:after:translate-x-4
-        transition-colors
-      " />
+      <div className="h-5 w-9 rounded-full border border-border bg-input transition-colors after:absolute after:left-[3px] after:top-[3px] after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:border-blue-500 peer-checked:bg-blue-600 peer-checked:after:translate-x-4 dark:after:bg-zinc-200" />
     </label>
   )
 }
@@ -213,11 +203,11 @@ export default function SettingsPage() {
         iconColor="text-blue-400"
       >
         <FieldRow label="Proxy Base URL" description="The base URL your applications route API calls through">
-          <TextInput defaultValue="http://localhost:3001/proxy" />
+          <TextInput defaultValue={proxyBaseUrl} />
         </FieldRow>
         <Separator className="bg-border/30" />
         <FieldRow label="Backend Analytics Port" description="Port on which the analytics service listens">
-          <TextInput defaultValue="3001" />
+          <TextInput defaultValue={analyticsPort} />
         </FieldRow>
         <Separator className="bg-border/30" />
         <FieldRow label="Request Timeout" description="Maximum time before a proxied request is aborted">
@@ -236,7 +226,7 @@ export default function SettingsPage() {
       {/* ── Anomaly Detection ───────────────────────────── */}
       <SettingsSection
         title="Anomaly Detection"
-        description="Configure thresholds and sensitivity for anomaly flagging"
+        description="Configure thresholds and understand how overload actions escalate"
         icon={Shield}
         iconColor="text-red-400"
       >
@@ -271,13 +261,23 @@ export default function SettingsPage() {
           />
         </FieldRow>
         <Separator className="bg-border/30" />
-        <FieldRow label="Auto-Reroute on Anomaly" description="Automatically reroute requests when an anomaly is detected">
+        <FieldRow label="Auto-Reroute on Anomaly" description="Disabled in the current runtime policy; high-severity overloads now hard-block instead">
           <Toggle defaultChecked={true} />
         </FieldRow>
         <Separator className="bg-border/30" />
         <FieldRow label="Auto-Block Critical Anomalies" description="Block all requests from a service flagged as critical">
           <Toggle defaultChecked={false} />
         </FieldRow>
+        <Separator className="bg-border/30" />
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-red-400">
+            Current Runtime Behavior
+          </p>
+          <p className="mt-2 font-mono text-[11px] leading-5 text-muted-foreground">
+            High-severity overloads are blocked at the proxy and return HTTP 403.
+            Medium overloads can still throttle or downgrade model traffic before they escalate into a hard block.
+          </p>
+        </div>
       </SettingsSection>
 
       {/* ── Per-Service Thresholds ──────────────────────── */}
@@ -290,7 +290,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3 mb-1">
           <AlertTriangle size={12} className="text-amber-400" />
           <p className="font-mono text-[10px] text-amber-400/80">
-            Enforcement action applies when either limit is exceeded
+            Threshold rows describe intended policy; live blocking currently applies to all high-severity overloads
           </p>
         </div>
         <ServiceThresholdRow service="openai"    color="text-blue-400 bg-blue-500/10 border-blue-500/20"     defaultCost={5}   defaultReq={50}  />
@@ -346,17 +346,10 @@ export default function SettingsPage() {
           Changes are applied immediately to the proxy layer
         </p>
         <div className="flex items-center gap-3">
-          <button className="
-            h-8 px-4 rounded-md font-mono text-xs text-muted-foreground
-            border border-border hover:bg-muted transition-colors
-          ">
+          <button className="h-8 rounded-md border border-border px-4 font-mono text-xs text-muted-foreground transition-colors hover:bg-muted">
             Reset defaults
           </button>
-          <button className="
-            h-8 px-4 rounded-md font-mono text-xs font-semibold
-            bg-blue-600 hover:bg-blue-500 text-white border border-blue-500
-            transition-colors shadow-[0_0_12px_rgba(59,130,246,0.25)]
-          ">
+          <button className="h-8 rounded-md border border-blue-500 bg-blue-600 px-4 font-mono text-xs font-semibold text-white shadow-[0_0_12px_rgba(59,130,246,0.25)] transition-colors hover:bg-blue-500">
             Save settings
           </button>
         </div>

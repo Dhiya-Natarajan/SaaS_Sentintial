@@ -7,7 +7,7 @@ interface LogRow {
   id:        string
   timestamp: string
   service:   string
-  method:    "GET" | "POST" | "PUT" | "DELETE"
+  method:    string
   path:      string
   status:    number
   latency:   number
@@ -113,13 +113,7 @@ export default function ActivityLogTable({ rows }: { rows: LogRow[] }) {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Filter by service or path..."
-            className="
-              w-full h-8 pl-8 pr-3 rounded-md text-xs font-mono
-              bg-input border border-border text-foreground
-              placeholder:text-muted-foreground
-              focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50
-              transition-colors
-            "
+            className="h-8 w-full rounded-md border border-border bg-input pl-8 pr-3 font-mono text-xs text-foreground placeholder:text-muted-foreground transition-colors focus:border-blue-500/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
           />
         </div>
 
@@ -129,13 +123,11 @@ export default function ActivityLogTable({ rows }: { rows: LogRow[] }) {
             <button
               key={key}
               onClick={() => setFilter(key)}
-              className={`
-                px-2.5 py-1 rounded-md font-mono text-[10px] tracking-wider uppercase transition-all
-                ${filter === key
+              className={`rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-all ${
+                filter === key
                   ? "bg-blue-600 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                  : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                }
-              `}
+                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
+              }`}
             >
               {label}
             </button>
