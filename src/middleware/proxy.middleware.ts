@@ -2,6 +2,8 @@
 import { createProxyMiddleware, Options } from 'http-proxy-middleware';
 import { logMetric } from '../services/metrics.service';
 import { anomalyDetector } from '../services/anomaly.service';
+import { recordRequest } from '../services/usage-tracker';
+import { isAnomaly as isUsageAnomaly } from '../ml/detect-anomaly';
 
 const credentials: Record<string, { apiKey: string, target: string }> = {
     'openai': {
@@ -30,7 +32,7 @@ export const setupProxy = (app: any) => {
                 proxyReq: (proxyReq, req, res) => {
                     const currentUsage = recordRequest(service);
 
-                    if (isAnomaly(currentUsage)) {
+                    if (isUsageAnomaly(currentUsage)) {
                         console.warn(`[${service}] Anomaly detected: ${currentUsage} requests in the current minute.`);
                         (res as any).status(429).json({
                             error: "Anomaly detected",
