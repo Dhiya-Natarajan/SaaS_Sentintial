@@ -6,8 +6,12 @@
   "scripts": {
     "dev": "bun run src/server.ts",
     "test": "bun run src/test-proxy.ts",
+    "test:dashboard": "bun run src/test-proxy.ts --dashboard",
+    "mock:upstreams": "bun run src/dev/mock-upstreams.ts",
+    "traffic:proxy": "bun run src/dev/send-proxy-traffic.ts",
     "typecheck": "bunx tsc --noEmit",
     "db:push": "bunx prisma db push",
+    "db:reset": "bunx prisma db push --force-reset",
     "db:generate": "bunx prisma generate"
   },
   "keywords": [],
@@ -33,4 +37,3 @@
     "typescript": "^5.9.3"
   }
 }
-
