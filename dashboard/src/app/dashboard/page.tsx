@@ -74,14 +74,14 @@ function KpiCard({
   value: string
   sub: string
   icon: React.ElementType
-  accent?: "blue" | "amber" | "red" | "green"
+  accent?: "blue" | "purple" | "red" | "green"
   delay?: number
 }) {
   const a = {
-    blue: { text: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", glow: "border-glow-blue" },
-    amber: { text: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", glow: "border-glow-amber" },
-    red: { text: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20", glow: "border-glow-red" },
-    green: { text: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20", glow: "" },
+    blue:   { text: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20",    glow: "border-glow-blue"   },
+    purple: { text: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20",  glow: "border-glow-purple" },
+    red:    { text: "text-red-400",     bg: "bg-red-500/10",     border: "border-red-500/20",     glow: "border-glow-red"    },
+    green:  { text: "text-green-400",   bg: "bg-green-500/10",   border: "border-green-500/20",   glow: ""                   },
   }[accent]
 
   return (
@@ -116,7 +116,7 @@ function ChartPanel({
 }: {
   title: string
   badge: string
-  badgeColor?: "blue" | "red" | "amber"
+  badgeColor?: "blue" | "red" | "purple" | "violet"
   icon: React.ElementType
   iconColor?: string
   glow?: string
@@ -124,9 +124,10 @@ function ChartPanel({
   children: React.ReactNode
 }) {
   const badgeStyles = {
-    blue: "border-blue-500/20 text-blue-400 bg-blue-500/5",
-    red: "border-red-500/20 text-red-400 bg-red-500/5",
-    amber: "border-amber-500/20 text-amber-400 bg-amber-500/5",
+    blue:   "border-blue-500/20   text-blue-400   bg-blue-500/5",
+    red:    "border-red-500/20    text-red-400    bg-red-500/5",
+    purple: "border-purple-500/20 text-purple-400 bg-purple-500/5",
+    violet: "border-violet-500/20 text-violet-400 bg-violet-500/5",
   }[badgeColor]
 
   return (
@@ -189,7 +190,7 @@ function TopEndpoints({ activityLog }: { activityLog: ActivityLogDatum[] }) {
           <span
             className={`font-mono text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${
               endpoint.method === "POST"
-                ? "text-blue-400 border-blue-500/20 bg-blue-500/5"
+                ? "text-violet-400 border-violet-500/20 bg-violet-500/5"
                 : "text-green-400 border-green-500/20 bg-green-500/5"
             }`}
           >
@@ -198,7 +199,7 @@ function TopEndpoints({ activityLog }: { activityLog: ActivityLogDatum[] }) {
           <span className="font-mono text-xs text-zinc-300 flex-1 truncate">{endpoint.path}</span>
           <div className="w-20 h-1 bg-white/5 rounded-full overflow-hidden shrink-0">
             <div
-              className="h-full bg-blue-500/50 rounded-full"
+              className="h-full bg-purple-500/50 rounded-full"
               style={{ width: `${(endpoint.requests / max) * 100}%` }}
             />
           </div>
@@ -245,7 +246,7 @@ export default async function DashboardPage() {
           </p>
           <h1 className="font-display text-[2rem] font-bold tracking-[-0.03em] text-foreground leading-none">
             SaaS Sentinel
-            <span className="text-blue-500 ml-2.5 font-light tracking-[-0.02em]">Dashboard</span>
+            <span className="text-purple-500 ml-2.5 font-light tracking-[-0.02em]">Dashboard</span>
           </h1>
         </div>
         <div className="flex items-center gap-3">
@@ -281,10 +282,10 @@ export default async function DashboardPage() {
       <LiveMetricsStrip initialMetrics={liveMetrics} />
 
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Total Requests" value={summary.totalRequests.toLocaleString()} sub="proxied calls intercepted" icon={Activity} accent="blue" delay={0} />
-        <KpiCard label="Total Cost" value={formattedCost} sub="cumulative spend tracked" icon={DollarSign} accent="amber" delay={80} />
-        <KpiCard label="Anomalies" value={String(anomalyCount)} sub="flagged enforcement events" icon={ShieldAlert} accent={anomalyCount > 0 ? "red" : "green"} delay={160} />
-        <KpiCard label="Services" value={String(serviceCount)} sub="active integrations tracked" icon={Layers} accent="green" delay={240} />
+        <KpiCard label="Total Requests" value={summary.totalRequests.toLocaleString()} sub="proxied calls intercepted"   icon={Activity}    accent="blue"   delay={0}   />
+        <KpiCard label="Total Cost"     value={formattedCost}                          sub="cumulative spend tracked"    icon={DollarSign}  accent="purple" delay={80}  />
+        <KpiCard label="Anomalies"      value={String(anomalyCount)}                   sub="flagged enforcement events"  icon={ShieldAlert} accent={anomalyCount > 0 ? "red" : "green"} delay={160} />
+        <KpiCard label="Services"       value={String(serviceCount)}                   sub="active integrations tracked" icon={Layers}      accent="green"  delay={240} />
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -297,9 +298,9 @@ export default async function DashboardPage() {
           title="Cost Breakdown"
           badge="By Service"
           icon={PieChart}
-          iconColor="text-amber-400"
-          badgeColor="amber"
-          glow="border-glow-amber"
+          iconColor="text-purple-400"
+          badgeColor="purple"
+          glow="border-glow-purple"
           delay={350}
         >
           <CostPieChart data={pieData} />
@@ -327,9 +328,9 @@ export default async function DashboardPage() {
         title="Request Forecast"
         badge="24-Hour Projection"
         icon={Zap}
-        iconColor="text-amber-400"
-        badgeColor="amber"
-        glow="border-glow-amber"
+        iconColor="text-violet-400"
+        badgeColor="violet"
+        glow="border-glow-violet"
         delay={500}
       >
         <div className="flex items-center gap-6 mb-3">
@@ -338,11 +339,11 @@ export default async function DashboardPage() {
             <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Actual</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-px border-t border-dashed border-amber-400" />
+            <div className="w-4 h-px border-t border-dashed border-purple-400" />
             <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Forecast</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-3 bg-amber-500/15 rounded" />
+            <div className="w-4 h-3 bg-purple-500/15 rounded" />
             <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">Confidence band</span>
           </div>
         </div>

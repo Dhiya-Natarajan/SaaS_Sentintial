@@ -23,7 +23,8 @@
     --muted:                210 16% 93%;
     --muted-foreground:     215 14% 44%;
 
-    --accent:               38 95% 48%;
+    /* purple replaces amber as accent */
+    --accent:               270 80% 58%;
     --accent-foreground:    0 0% 100%;
 
     --destructive:          0 84% 55%;
@@ -31,7 +32,7 @@
 
     --border:               214 18% 88%;
     --input:                210 20% 94%;
-    --ring:                 214 100% 50%;
+    --ring:                 270 80% 58%;
 
     --radius: 0.375rem;
 
@@ -59,7 +60,8 @@
     --muted:              224 8% 14%;
     --muted-foreground:   220 9% 46%;
 
-    --accent:             38 95% 53%;
+    /* purple replaces amber as accent */
+    --accent:             270 80% 65%;
     --accent-foreground:  224 12% 6%;
 
     --destructive:        0 84% 60%;
@@ -67,7 +69,7 @@
 
     --border:             224 8% 18%;
     --input:              224 8% 18%;
-    --ring:               214 100% 60%;
+    --ring:               270 80% 65%;
   }
 }
 
@@ -96,27 +98,37 @@
 }
 
 @layer utilities {
-  .glow-blue   { filter: drop-shadow(0 0 8px rgba(59,130,246,0.7)); }
-  .glow-amber  { filter: drop-shadow(0 0 8px rgba(245,158,11,0.7)); }
-  .glow-red    { filter: drop-shadow(0 0 8px rgba(239,68,68,0.7)); }
+  /* Distinct glow per accent — no more amber/yellow */
+  .glow-blue    { filter: drop-shadow(0 0 8px rgba(59,130,246,0.7)); }
+  .glow-purple  { filter: drop-shadow(0 0 8px rgba(168,85,247,0.7)); }
+  .glow-red     { filter: drop-shadow(0 0 8px rgba(239,68,68,0.7)); }
+  .glow-violet  { filter: drop-shadow(0 0 10px rgba(139,92,246,0.6)); }
 
   .text-mono    { font-family: var(--font-mono); }
   .text-display { font-family: var(--font-display); }
 
+  /* Blue — cool cyan-blue */
   .border-glow-blue {
     box-shadow: 0 0 0 1px rgba(59,130,246,0.35), inset 0 0 20px rgba(59,130,246,0.04);
   }
-  .border-glow-amber {
-    box-shadow: 0 0 0 1px rgba(245,158,11,0.35), inset 0 0 20px rgba(245,158,11,0.04);
+  /* Purple — rich violet */
+  .border-glow-purple {
+    box-shadow: 0 0 0 1px rgba(168,85,247,0.4), inset 0 0 24px rgba(168,85,247,0.06);
   }
+  /* Violet — deeper purple for Cost card */
+  .border-glow-violet {
+    box-shadow: 0 0 0 1px rgba(139,92,246,0.4), inset 0 0 24px rgba(139,92,246,0.06);
+  }
+  /* Red — stays red */
   .border-glow-red {
     box-shadow: 0 0 0 1px rgba(239,68,68,0.35), inset 0 0 20px rgba(239,68,68,0.04);
   }
 
-  /* In light mode, tone down glows */
-  :root:not(.dark) .border-glow-blue  { box-shadow: 0 0 0 1px rgba(59,130,246,0.2);  }
-  :root:not(.dark) .border-glow-amber { box-shadow: 0 0 0 1px rgba(245,158,11,0.2);  }
-  :root:not(.dark) .border-glow-red   { box-shadow: 0 0 0 1px rgba(239,68,68,0.2);   }
+  /* Light-mode tone-down */
+  :root:not(.dark) .border-glow-blue   { box-shadow: 0 0 0 1px rgba(59,130,246,0.2);  }
+  :root:not(.dark) .border-glow-purple  { box-shadow: 0 0 0 1px rgba(168,85,247,0.25); }
+  :root:not(.dark) .border-glow-violet  { box-shadow: 0 0 0 1px rgba(139,92,246,0.25); }
+  :root:not(.dark) .border-glow-red     { box-shadow: 0 0 0 1px rgba(239,68,68,0.2);   }
 
   .animate-live {
     animation: live-pulse 2s ease-in-out infinite;

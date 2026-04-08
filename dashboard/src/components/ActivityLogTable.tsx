@@ -140,7 +140,7 @@ export default function ActivityLogTable({ rows }: { rows: LogRow[] }) {
       </div>
 
       {/* ── Table ── */}
-      <div className="overflow-auto">
+      <div className="overflow-y-auto max-h-[520px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border/60">

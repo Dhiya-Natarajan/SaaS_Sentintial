@@ -36,12 +36,13 @@ export default function SidebarNav() {
       <aside className="flex h-screen w-[60px] shrink-0 flex-col items-center gap-1 border-r border-border bg-card py-4">
         {/* Logo */}
         <div className="mb-3 flex flex-col items-center">
-          <Hexagon
+          {/* <Hexagon
             className="text-blue-500 glow-blue"
             size={28}
             strokeWidth={1.5}
             fill="rgba(59,130,246,0.1)"
-          />
+          /> */}
+          <img src="logo.png" alt="Logo" className="w-6 h-8" />
         </div>
 
         <Separator className="w-8 mb-2" />

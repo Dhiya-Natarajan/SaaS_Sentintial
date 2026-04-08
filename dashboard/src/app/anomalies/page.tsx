@@ -316,11 +316,12 @@ export default async function AnomaliesPage({
               <p className="font-mono text-[11px] text-muted-foreground/60">All services operating within normal thresholds</p>
             </div>
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border/60">
-                  {["Severity", "Service", "Action", "Path", "Reason", "Timestamp"].map((header) => (
-                    <th key={header} className="text-left py-3 px-6 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground font-normal">
+            <div className="overflow-y-auto max-h-[420px] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/60">
+                    {["Severity", "Service", "Action", "Path", "Reason", "Timestamp"].map((header) => (
+                      <th key={header} className="text-left py-3 px-6 font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground font-normal">
                       {header}
                     </th>
                   ))}
@@ -374,6 +375,7 @@ export default async function AnomaliesPage({
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>
