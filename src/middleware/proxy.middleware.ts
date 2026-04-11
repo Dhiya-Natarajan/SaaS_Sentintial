@@ -213,7 +213,17 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
                     const controlledReq = req as ControlledRequest;
                     const upstreamRequest = controlledReq._upstreamRequest;
 
+<<<<<<< HEAD
                     if (!upstreamRequest) {
+=======
+                    if (isUsageAnomaly(currentUsage)) {
+                        console.warn(`[${service}] Anomaly detected: ${currentUsage} requests in the current minute.`);
+                        (res as any).status(429).json({
+                            error: "Anomaly detected",
+                            message: "Request blocked due to abnormal usage", currentUsage
+                        });
+                        proxyReq.destroy();
+>>>>>>> main
                         return;
                     }
 
@@ -246,6 +256,7 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
                         responseBody = transformed.body;
                     }
 
+<<<<<<< HEAD
                     const { isAnomaly, score } = await resolvedDependencies.anomalyDetector.detectAnomaly(
                         duration,
                         statusCode,
@@ -261,6 +272,25 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
 
                     await resolvedDependencies.logMetric({
                         service: routedService,
+=======
+                    (req as any)._startTime = Date.now();
+                },
+                proxyRes: async (proxyRes, req, res) => {
+                    const duration = Date.now() - (req as any)._startTime;
+                    const statusCode = proxyRes.statusCode || 0;
+                    const endpoint = req.url || '/';
+                    const method = req.method || 'GET';
+
+                    // Real-time Anomaly Detection
+                    const { isAnomaly, score } = await anomalyDetector.detectAnomaly(duration, statusCode, method, service + endpoint);
+                    if (isAnomaly) {
+                        console.warn(`🚨 [ANOMALY] Detected abnormal behavior on ${service}: Score=${score.toFixed(3)} | Latency=${duration}ms | Payload=${method} ${endpoint}`);
+                        // Optionally trigger webhooks or block request
+                    }
+
+                    logMetric({
+                        service,
+>>>>>>> main
                         endpoint,
                         method,
                         statusCode,
