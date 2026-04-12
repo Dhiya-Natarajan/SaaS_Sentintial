@@ -3,10 +3,7 @@ export interface RetrainStatus {
   message: string;
 }
 
-export function buildRetrainStatus(
-  usageModelTrained: boolean,
-  responseAnomalyModelTrained: boolean
-): RetrainStatus {
+export function buildRetrainStatus(usageModelTrained: boolean, responseAnomalyModelTrained: boolean): RetrainStatus {
   if (usageModelTrained && responseAnomalyModelTrained) {
     return {
       status: 'trained',

@@ -53,7 +53,7 @@ function CustomTooltip({
 function actionClass(action: string) {
   switch (action) {
     case "block":    return "bg-red-500/10 text-red-400"
-    case "reroute":  return "bg-amber-500/10 text-amber-400"
+    case "reroute":  return "bg-purple-500/10 text-purple-400"
     case "throttle": return "bg-blue-500/10 text-blue-400"
     default:         return "bg-zinc-500/10 text-zinc-400"
   }
@@ -62,7 +62,7 @@ function actionClass(action: string) {
 function barColor(action: string) {
   switch (action) {
     case "block":    return "#ef4444"
-    case "reroute":  return "#f59e0b"
+    case "reroute":  return "#a855f7"  // purple replaces amber
     case "throttle": return "#3b82f6"
     default:         return "#71717a"
   }
@@ -71,9 +71,10 @@ function barColor(action: string) {
 // ── Raw table ─────────────────────────────────────────────────────────────
 function AnomalyTable({ data }: { data: AnomalyPoint[] }) {
   return (
-    <div className="overflow-auto">
+    // max-h + overflow-y-auto prevents the table from expanding the page indefinitely
+    <div className="overflow-auto max-h-48 scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
       <table className="w-full text-sm">
-        <thead>
+        <thead className="sticky top-0 bg-card z-10">
           <tr className="border-b border-border">
             {["Service", "Action", "Count", "Time"].map((h) => (
               <th

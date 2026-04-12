@@ -1,12 +1,10 @@
-import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
+import { prisma } from '../lib/prisma';
 
 import { groupByMinute } from './usage-analyzer';
 import { trainUsageModel } from './forecasting';
 import { USAGE_MODEL_PATH } from './model-paths';
-
-const prisma = new PrismaClient();
 
 export async function trainUsageBaseline() {
 

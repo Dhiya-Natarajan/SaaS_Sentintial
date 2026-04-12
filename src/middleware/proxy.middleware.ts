@@ -33,12 +33,16 @@ interface ProxyDependencies {
         evaluate(input: ControlDecisionInput): Promise<ControlDecision>;
     };
     anomalyDetector?: {
-        detectAnomaly(
-            latencyMs: number,
-            statusCode: number,
-            method: string,
-            endpoint: string
-        ): Promise<{ isAnomaly: boolean; score: number }>;
+        detectAnomaly(input: {
+            service: string;
+            endpoint: string;
+            method: string;
+            latencyMs: number;
+            statusCode: number;
+            requestSize?: number;
+            responseSize?: number;
+            timestamp?: Date | string | number;
+        }): Promise<{ isAnomaly: boolean; score: number }>;
     };
     logMetric?: (metric: ApiMetric) => Promise<unknown> | unknown;
 }
@@ -107,6 +111,46 @@ function setResponseHeaders(
     }
 }
 
+function getRequestSize(req: { headers: Request['headers']; body?: unknown }) {
+    const contentLength = req.headers['content-length'];
+    const headerValue = Array.isArray(contentLength) ? contentLength[0] : contentLength;
+    const parsedHeader = Number(headerValue);
+
+    if (Number.isFinite(parsedHeader) && parsedHeader >= 0) {
+        return parsedHeader;
+    }
+
+    if (Buffer.isBuffer(req.body)) {
+        return req.body.length;
+    }
+
+    if (typeof req.body === 'string') {
+        return Buffer.byteLength(req.body);
+    }
+
+    if (req.body && typeof req.body === 'object') {
+        try {
+            return Buffer.byteLength(JSON.stringify(req.body));
+        } catch {
+            return 0;
+        }
+    }
+
+    return 0;
+}
+
+function getResponseSize(body: Buffer | string) {
+    if (Buffer.isBuffer(body)) {
+        return body.length;
+    }
+
+    if (typeof body === 'string') {
+        return Buffer.byteLength(body);
+    }
+
+    return 0;
+}
+
 const buildControlMiddleware = (
     service: ProviderService,
     dependencies: Required<ProxyDependencies>
@@ -138,7 +182,23 @@ const buildControlMiddleware = (
             controlledReq._controlDecision = decision;
 
             if (decision.actions.includes('BLOCK')) {
-                return res.status(403).json(getStructuredBlockResponse(decision));
+                const blockPayload = getStructuredBlockResponse(decision);
+                const blockBody = JSON.stringify(blockPayload);
+
+                await dependencies.logMetric({
+                    service,
+                    endpoint: req.url || '/',
+                    method: req.method || 'GET',
+                    statusCode: 403,
+                    latencyMs: Date.now() - (controlledReq._startTime || Date.now()),
+                    timestamp: new Date().toISOString(),
+                    cost: 0,
+                    requestSize: getRequestSize(req),
+                    responseSize: Buffer.byteLength(blockBody),
+                    actionTaken: decision.actions.join(',')
+                });
+
+                return res.status(403).json(blockPayload);
             }
 
             controlledReq._upstreamRequest = prepareUpstreamRequest({
@@ -227,6 +287,7 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
                     const method = req.method || 'GET';
                     const routedService = controlledReq._controlDecision?.routedService || service;
                     const duration = Date.now() - (controlledReq._startTime || Date.now());
+                    const requestSize = getRequestSize(req);
                     let statusCode = proxyRes.statusCode || 200;
                     let responseBody: Buffer | string = responseBuffer;
 
@@ -246,12 +307,17 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
                         responseBody = transformed.body;
                     }
 
-                    const { isAnomaly, score } = await resolvedDependencies.anomalyDetector.detectAnomaly(
-                        duration,
-                        statusCode,
+                    const responseSize = getResponseSize(responseBody);
+                    const { isAnomaly, score } = await resolvedDependencies.anomalyDetector.detectAnomaly({
+                        service: routedService,
+                        endpoint,
                         method,
-                        routedService + endpoint
-                    );
+                        latencyMs: duration,
+                        statusCode,
+                        requestSize,
+                        responseSize,
+                        timestamp: new Date()
+                    });
 
                     if (isAnomaly) {
                         console.warn(
@@ -265,7 +331,10 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
                         method,
                         statusCode,
                         latencyMs: duration,
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        requestSize,
+                        responseSize,
+                        actionTaken: controlledReq._controlDecision?.actions.join(',') || undefined
                     });
 
                     return responseBody;
@@ -278,13 +347,20 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
 
                     console.error(`[${service}] Proxy Error:`, err.message);
 
+                    const errorBody = JSON.stringify({
+                        error: 'Upstream request failed.'
+                    });
+
                     await resolvedDependencies.logMetric({
                         service: routedService,
                         endpoint: req.url || '/',
                         method: req.method || 'GET',
                         statusCode: 502,
                         latencyMs: duration,
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        requestSize: getRequestSize(req),
+                        responseSize: Buffer.byteLength(errorBody),
+                        actionTaken: controlledReq._controlDecision?.actions.join(',') || undefined
                     });
 
                     if (!serverResponse.headersSent) {
@@ -292,9 +368,7 @@ export const setupProxy = (app: any, dependencies: ProxyDependencies = {}) => {
                     }
 
                     serverResponse.end(
-                        JSON.stringify({
-                            error: 'Upstream request failed.'
-                        })
+                        errorBody
                     );
                 }
             }

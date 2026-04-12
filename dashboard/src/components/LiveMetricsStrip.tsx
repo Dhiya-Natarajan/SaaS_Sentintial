@@ -1,35 +1,9 @@
 "use client"
-// components/LiveMetricsStrip.tsx
-import { useEffect, useState } from "react"
-import { Activity, Clock, CheckCircle, Users } from "lucide-react"
 
-interface LiveMetrics {
-  reqPerMin:   number
-  avgLatency:  number
-  successRate: number
-  activeUsers: number
-}
+import { useEffect, useEffectEvent, useState } from "react"
+import { Activity, Clock, CheckCircle, Layers } from "lucide-react"
 
-async function fetchLiveMetrics(): Promise<LiveMetrics> {
-  // Derive from summary — replace with a dedicated /analytics/live endpoint if available
-  const [summary, trend] = await Promise.all([
-    fetch("/api/proxy/analytics/summary").then(r => r.json()).catch(() => ({})),
-    fetch("/api/proxy/analytics/trend").then(r => r.json()).catch(() => ({})),
-  ])
-
-  const trendValues = Object.values(trend as Record<string, number>)
-  const recent = trendValues.slice(-5)
-  const reqPerMin = recent.length
-    ? Math.round(recent.reduce((a: number, b) => a + (b as number), 0) / recent.length)
-    : 0
-
-  return {
-    reqPerMin,
-    avgLatency:  Math.floor(Math.random() * 80) + 40,   // replace with real latency endpoint
-    successRate: 94 + Math.random() * 5,                // replace with real success endpoint
-    activeUsers: Math.floor(Math.random() * 8) + 2,     // replace with real users endpoint
-  }
-}
+import type { LiveMetricsDatum } from "@/lib/sentinel-types"
 
 interface MetricTileProps {
   label: string
@@ -40,16 +14,48 @@ interface MetricTileProps {
   pulse?: boolean
 }
 
+function formatUpdatedTime(timestamp: string | null) {
+  if (!timestamp) {
+    return ""
+  }
+
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+async function fetchLiveMetrics() {
+  const response = await fetch("/api/sentinel/analytics/live", {
+    cache: "no-store",
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch live metrics: ${response.status}`)
+  }
+
+  return (await response.json()) as LiveMetricsDatum
+}
+
 function MetricTile({ label, value, sub, icon: Icon, color, pulse }: MetricTileProps) {
   return (
-    <div className={`flex items-center gap-3 px-5 py-3 border-r border-border/40 last:border-r-0`}>
+    <div
+      className="flex items-center gap-3 px-5 py-3 border-r border-border/40 last:border-r-0"
+      title={sub}
+    >
       <div className={`p-1.5 rounded-md ${color.replace("text-", "bg-").replace("400", "500/10")}`}>
         <Icon size={13} className={color} />
       </div>
       <div>
         <div className="flex items-center gap-1.5">
           <span className={`font-mono text-base font-semibold ${color}`}>{value}</span>
-          {pulse && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-live" />}
+          {pulse ? <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-live" /> : null}
         </div>
         <p className="font-mono text-[9px] tracking-widest uppercase text-muted-foreground">{label}</p>
       </div>
@@ -57,23 +63,31 @@ function MetricTile({ label, value, sub, icon: Icon, color, pulse }: MetricTileP
   )
 }
 
-export default function LiveMetricsStrip() {
-  const [metrics, setMetrics] = useState<LiveMetrics>({
-    reqPerMin: 0, avgLatency: 0, successRate: 0, activeUsers: 0,
-  })
-  const [lastUpdated, setLastUpdated] = useState<string>("")
+export default function LiveMetricsStrip({
+  initialMetrics,
+}: {
+  initialMetrics: LiveMetricsDatum
+}) {
+  const [metrics, setMetrics] = useState(initialMetrics)
 
-  const refresh = async () => {
-    const m = await fetchLiveMetrics()
-    setMetrics(m)
-    setLastUpdated(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }))
-  }
+  const refresh = useEffectEvent(async () => {
+    try {
+      const nextMetrics = await fetchLiveMetrics()
+      setMetrics(nextMetrics)
+    } catch (error) {
+      console.error("Failed to refresh live metrics:", error)
+    }
+  })
 
   useEffect(() => {
-    refresh()
-    const interval = setInterval(refresh, 30_000)
-    return () => clearInterval(interval)
+    const interval = window.setInterval(() => {
+      void refresh()
+    }, 30_000)
+
+    return () => window.clearInterval(interval)
   }, [])
+
+  const lastUpdated = formatUpdatedTime(metrics.lastUpdated)
 
   return (
     <div className="flex items-center justify-between bg-card border border-border rounded-lg overflow-hidden">
@@ -81,7 +95,7 @@ export default function LiveMetricsStrip() {
         <MetricTile
           label="Req / Min"
           value={String(metrics.reqPerMin)}
-          sub="requests per minute"
+          sub="Average requests per minute over the recent activity window"
           icon={Activity}
           color="text-blue-400"
           pulse
@@ -89,30 +103,30 @@ export default function LiveMetricsStrip() {
         <MetricTile
           label="Avg Latency"
           value={`${metrics.avgLatency}ms`}
-          sub="response time"
+          sub="Average response latency across recent requests"
           icon={Clock}
           color={metrics.avgLatency > 100 ? "text-amber-400" : "text-green-400"}
         />
         <MetricTile
           label="Success Rate"
           value={`${metrics.successRate.toFixed(1)}%`}
-          sub="2xx responses"
+          sub="Recent requests completed without 4xx or 5xx errors"
           icon={CheckCircle}
           color={metrics.successRate < 95 ? "text-amber-400" : "text-green-400"}
         />
         <MetricTile
-          label="Active Users"
-          value={String(metrics.activeUsers)}
-          sub="current sessions"
-          icon={Users}
+          label="Active Services"
+          value={String(metrics.activeServices)}
+          sub="Distinct upstream services active in the recent window"
+          icon={Layers}
           color="text-purple-400"
         />
       </div>
-      {lastUpdated && (
+      {lastUpdated ? (
         <p className="font-mono text-[9px] text-muted-foreground px-4 whitespace-nowrap">
           updated {lastUpdated}
         </p>
-      )}
+      ) : null}
     </div>
   )
 }

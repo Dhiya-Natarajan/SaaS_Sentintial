@@ -2,19 +2,13 @@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { fetchSentinelJson } from "@/lib/sentinel-api"
+import type { ServiceBreakdownAnalytics } from "@/lib/sentinel-types"
 import { Layers, DollarSign, Activity, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
-interface ServiceData {
-  requests: number
-  cost: number
-}
+export const dynamic = "force-dynamic"
 
-async function getServices(): Promise<Record<string, ServiceData>> {
-  const res = await fetch("http://localhost:3001/analytics/service-breakdown", {
-    cache: "no-store",
-  })
-  return res.json()
-}
+const EMPTY_SERVICES: ServiceBreakdownAnalytics = {}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatCost(cost: number) {
@@ -48,8 +42,8 @@ function getServiceColor(name: string) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default async function ServicesPage() {
-  const services = await getServices()
-  const entries = Object.entries(services) as [string, ServiceData][]
+  const services = await fetchSentinelJson("/analytics/service-breakdown", EMPTY_SERVICES)
+  const entries = Object.entries(services)
 
   const totalRequests = entries.reduce((s, [, d]) => s + d.requests, 0)
   const totalCost     = entries.reduce((s, [, d]) => s + d.cost, 0)

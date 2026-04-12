@@ -4,10 +4,14 @@
   "main": "index.js",
   "packageManager": "bun@1.3.10",
   "scripts": {
-    "dev": "npm run src/server.ts",
+    "dev": "bun run src/server.ts",
     "test": "bun run src/test-proxy.ts",
+    "test:dashboard": "bun run src/test-proxy.ts --dashboard",
+    "mock:upstreams": "bun run src/dev/mock-upstreams.ts",
+    "traffic:proxy": "bun run src/dev/send-proxy-traffic.ts",
     "typecheck": "bunx tsc --noEmit",
     "db:push": "bunx prisma db push",
+    "db:reset": "bunx prisma db push --force-reset",
     "db:generate": "bunx prisma generate"
   },
   "keywords": [],
@@ -15,13 +19,13 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@prisma/client": "^5.14.0",
+    "@prisma/client": "^7.5.0",
     "axios": "^1.13.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.5",
     "ml-isolation-forest": "^0.1.0",
-    "prisma": "^5.14.0",
+    "prisma": "^7.5.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

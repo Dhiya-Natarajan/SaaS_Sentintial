@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip,
   ReferenceLine,
-  Legend,
 } from "recharts"
 
 interface TrendPoint {
@@ -27,7 +26,7 @@ interface ForecastPoint {
   isForecast?: boolean
 }
 
-function buildForecast(data: TrendPoint[]): ForecastPoint[] {
+function buildForecast(data: TrendPoint[], predictions: number[] = []): ForecastPoint[] {
   if (!data.length) return []
 
   // Simple linear regression for forecasting
@@ -51,13 +50,14 @@ function buildForecast(data: TrendPoint[]): ForecastPoint[] {
     forecast: Math.max(0, Math.round(intercept + slope * i)),
   }))
 
-  // Project 4 future points
-  const future: ForecastPoint[] = Array.from({ length: 4 }, (_, i) => {
+  const futureHorizon = predictions.length || 4
+
+  const future: ForecastPoint[] = Array.from({ length: futureHorizon }, (_, i) => {
     const idx = n + i
-    const projected = Math.max(0, intercept + slope * idx)
+    const projected = Math.max(0, predictions[i] ?? intercept + slope * idx)
     const variance = Math.max(1, projected * 0.2)
     return {
-      label: `+${i + 1}d`,
+      label: `+${i + 1}h`,
       forecast: Math.round(projected),
       upper: Math.round(projected + variance),
       lower: Math.round(Math.max(0, projected - variance)),
@@ -91,8 +91,14 @@ function CustomTooltip({
   )
 }
 
-export default function ForecastChart({ data }: { data: TrendPoint[] }) {
-  const chartData = buildForecast(data)
+export default function ForecastChart({
+  data,
+  predictions = [],
+}: {
+  data: TrendPoint[]
+  predictions?: number[]
+}) {
+  const chartData = buildForecast(data, predictions)
   const splitIndex = data.length - 1
 
   if (!chartData.length) {
